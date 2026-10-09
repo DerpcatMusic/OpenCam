@@ -63,6 +63,8 @@ final class PhoneProcessor implements AutoCloseable {
     EGLDisplay display = EGL14.EGL_NO_DISPLAY;
     EGLContext eglContext = EGL14.EGL_NO_CONTEXT;
     EGLSurface eglSurface = EGL14.EGL_NO_SURFACE;
+    EGLSurface previewSurface = EGL14.EGL_NO_SURFACE;
+    EGLConfig configuration;
     SurfaceTexture cameraTexture;
     Surface cameraSurface;
     int cameraImage,maskImage,program,blurProgram;
@@ -83,6 +85,15 @@ final class PhoneProcessor implements AutoCloseable {
     }
     Surface surface() { return cameraSurface; }
     void update(JSONObject settings) { options=Options.read(settings); }
+    void preview(Surface target) {
+        handler.post(() -> {
+            try {
+                if (previewSurface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, previewSurface);
+                previewSurface = EGL14.eglCreateWindowSurface(display, configuration, target, new int[]{EGL14.EGL_NONE}, 0);
+                check(previewSurface != EGL14.EGL_NO_SURFACE, "Create preview surface");
+            } catch (Exception e) { error.accept(e); }
+        });
+    }
 
     void initialize(Surface target) throws Exception {
         display=EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
@@ -92,6 +103,7 @@ final class PhoneProcessor implements AutoCloseable {
             EGL14.EGL_RENDERABLE_TYPE,0x0040,0x3142,1,EGL14.EGL_NONE};
         EGLConfig[] configs=new EGLConfig[1]; int[] count=new int[1];
         check(EGL14.eglChooseConfig(display,attributes,0,configs,0,1,count,0) && count[0]>0,"Find recordable GLES3 configuration");
+        configuration = configs[0];
         eglContext=EGL14.eglCreateContext(display,configs[0],EGL14.EGL_NO_CONTEXT,new int[]{EGL14.EGL_CONTEXT_CLIENT_VERSION,3,EGL14.EGL_NONE},0);
         eglSurface=EGL14.eglCreateWindowSurface(display,configs[0],target,new int[]{EGL14.EGL_NONE},0);
         check(EGL14.eglMakeCurrent(display,eglSurface,eglSurface,eglContext),"Bind encoder surface");
@@ -211,6 +223,13 @@ final class PhoneProcessor implements AutoCloseable {
         camera(o,false,uploaded!=null && now-uploaded.sampledMs()<=500);
         EGLExt.eglPresentationTimeANDROID(display,eglSurface,cameraTexture.getTimestamp());
         check(EGL14.eglSwapBuffers(display,eglSurface),"Submit processed frame");
+        if (previewSurface != EGL14.EGL_NO_SURFACE) {
+            check(EGL14.eglMakeCurrent(display, previewSurface, previewSurface, eglContext), "Bind preview");
+            GLES30.glViewport(0, 0, width, height);
+            camera(o, false, uploaded != null && now-uploaded.sampledMs()<=500);
+            check(EGL14.eglSwapBuffers(display, previewSurface), "Submit preview frame");
+            check(EGL14.eglMakeCurrent(display, eglSurface, eglSurface, eglContext), "Restore encoder surface");
+        }
         submitMs=(System.nanoTime()-start)/1e6; renderedFrames++;
     }
     JSONObject stats() {
@@ -231,6 +250,7 @@ final class PhoneProcessor implements AutoCloseable {
             }
             if (display!=EGL14.EGL_NO_DISPLAY) {
                 EGL14.eglMakeCurrent(display,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_CONTEXT);
+                if (previewSurface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, previewSurface);
                 EGL14.eglDestroySurface(display,eglSurface); EGL14.eglDestroyContext(display,eglContext); EGL14.eglTerminate(display);
             }
             thread.quitSafely(); return null;

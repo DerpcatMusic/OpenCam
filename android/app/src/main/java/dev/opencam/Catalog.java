@@ -48,18 +48,25 @@ final class Catalog {
         return keys != null && keys.contains(key);
     }
 
-    Size[] sizes(Lens lens) throws CameraAccessException {
-        StreamConfigurationMap map = lens.chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-        Size[] values = map == null ? null : map.getOutputSizes(MediaCodec.class);
-        if (values == null) return new Size[0];
-        if (lens.physicalId != null) {
-            StreamConfigurationMap parent = manager.getCameraCharacteristics(lens.openId).get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-            Size[] parentSizes = parent == null ? null : parent.getOutputSizes(MediaCodec.class);
-            Set<Size> allowed = parentSizes == null ? Set.of() : new HashSet<>(Arrays.asList(parentSizes));
-            values = Arrays.stream(values).filter(allowed::contains).toArray(Size[]::new);
+    Size[] sizes(Lens lens) throws CameraAccessException { return sizes(lens, ""); }
+    Size[] sizes(Lens lens,String codec) throws CameraAccessException {
+        StreamConfigurationMap map=lens.chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+        Size[] values=outputSizes(map,codec);
+        if (values==null) return new Size[0];
+        if (lens.physicalId!=null) {
+            StreamConfigurationMap parent=manager.getCameraCharacteristics(lens.openId).get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            Size[] parentSizes=outputSizes(parent,codec);
+            Set<Size> allowed=parentSizes==null?Set.of():new HashSet<>(Arrays.asList(parentSizes));
+            values=Arrays.stream(values).filter(allowed::contains).toArray(Size[]::new);
         }
-        Arrays.sort(values, Comparator.comparingLong((Size s) -> (long) s.getWidth() * s.getHeight()));
-        return values;
+        Arrays.sort(values,Comparator.comparingLong((Size size)->(long)size.getWidth()*size.getHeight()));return values;
+    }
+    static Size[] outputSizes(StreamConfigurationMap map,String codec) {
+        if(map==null)return null;
+        return codec.equals(WirePixels.YUV)?map.getOutputSizes(ImageFormat.YUV_420_888):codec.equals(WirePixels.RGBA)?map.getOutputSizes(android.graphics.SurfaceTexture.class):map.getOutputSizes(MediaCodec.class);
+    }
+    static long minFrameNs(StreamConfigurationMap map,String codec,Size size) {
+        return codec.equals(WirePixels.YUV)?map.getOutputMinFrameDuration(ImageFormat.YUV_420_888,size):codec.equals(WirePixels.RGBA)?map.getOutputMinFrameDuration(android.graphics.SurfaceTexture.class,size):map.getOutputMinFrameDuration(MediaCodec.class,size);
     }
 
     JSONObject describe(Lens l) throws Exception {
@@ -82,6 +89,9 @@ final class Catalog {
         Float focus = c.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
         List<JSONObject> durations = new ArrayList<>();
         for (Size s : sizes(l)) durations.add(Json.object("size", s, "minFrameNs", map.getOutputMinFrameDuration(MediaCodec.class, s)));
+        List<JSONObject> yuvDurations=new ArrayList<>(),rgbaDurations=new ArrayList<>();
+        for(Size size:sizes(l,WirePixels.YUV))yuvDurations.add(Json.object("size",size,"minFrameNs",minFrameNs(map,WirePixels.YUV,size)));
+        for(Size size:sizes(l,WirePixels.RGBA))rgbaDurations.add(Json.object("size",size,"minFrameNs",minFrameNs(map,WirePixels.RGBA,size)));
         List<JSONObject> highSpeed = new ArrayList<>();
         if (l.physicalId == null && has(c, CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_CONSTRAINED_HIGH_SPEED_VIDEO)) {
             for (Size s : map.getHighSpeedVideoSizes()) highSpeed.add(Json.object("size", s, "fpsRanges", map.getHighSpeedVideoFpsRangesFor(s)));
@@ -91,8 +101,9 @@ final class Catalog {
                 && writable(l, CaptureRequest.CONTROL_AE_MODE);
         JSONObject result = Json.object("id", l.id, "openId", l.openId, "physicalId", l.physicalId,
                 "label", label, "facing", facing, "sizes", sizes(l), "frameDurations", durations,
+                "encodedSizes",sizes(l),"encodedFrameDurations",durations,"yuvSizes",sizes(l,WirePixels.YUV),"rgbaSizes",sizes(l,WirePixels.RGBA),"yuvFrameDurations",yuvDurations,"rgbaFrameDurations",rgbaDurations,
                 "fpsRanges", c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES),
-                "highSpeed", highSpeed, "focals", focal, "apertures", c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES),
+                "highSpeed", highSpeed, "encodedHighSpeed",highSpeed,"focals", focal, "apertures", c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES),
                 "iso", c.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE),
                 "exposureNs", c.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE),
                 "manualSensor", manual, "focusMax", focus == null ? 0 : focus,
@@ -139,6 +150,8 @@ final class Catalog {
                         "bitrate", v.getBitrateRange(), "frameRates", v.getSupportedFrameRates()));
             }
         }
+        codecs.put(Json.object("name",WirePixels.YUV,"mime",WirePixels.mime(WirePixels.YUV),"label","Uncompressed YUV420","bitrate",new int[]{1,Integer.MAX_VALUE}));
+        codecs.put(Json.object("name",WirePixels.RGBA,"mime",WirePixels.mime(WirePixels.RGBA),"label","Uncompressed RGBA","bitrate",new int[]{1,Integer.MAX_VALUE}));
         snapshot = Json.object("type", "capabilities", "protocol", 1,
                 "device", Build.MANUFACTURER + " " + Build.MODEL, "cameras", cameras, "codecs", codecs);
         return snapshot;

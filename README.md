@@ -1,6 +1,6 @@
 # OpenCam
 
-Open-source Android Camera2 webcam studio. Native Rust/Zui desktop, native Android Material3 companion, USB and encrypted Wi-Fi, hardware H.264/HEVC selection and automatic codec benchmarking. MIT-licensed source.
+Open-source Android Camera2 webcam studio. Native Rust/Zui desktop, native Android Material3 companion, USB and encrypted Wi-Fi, hardware H.264/HEVC or uncompressed YUV420/RGBA, automatic transport-format benchmarking and connection recovery. MIT-licensed source.
 
 [Source](https://github.com/DerpcatMusic/OpenCam) · [Downloads](https://github.com/DerpcatMusic/OpenCam/releases) · [Builds](https://github.com/DerpcatMusic/OpenCam/actions/workflows/build.yml)
 
@@ -14,7 +14,7 @@ Download a package from [GitHub Releases](https://github.com/DerpcatMusic/OpenCa
 
 OpenCam uses `dev.opencam` on Android and `opencam://` pairing links. The earlier Lenslink prototype is a separate app: install both OpenCam builds and pair again. Existing Lenslink settings are not migrated.
 
-1. Install the APK on an Android 11+ phone. Open OpenCam, grant Camera permission, optionally enable Password protection and set a password, then enable the connection. Keep it open while streaming; backgrounding it stops the camera and server.
+1. Install the APK on an Android 11+ phone. Open OpenCam and grant Camera permission for local preview. The vertical icons open camera, format, sensor and phone effects controls. Open the connection icon, optionally enable Password protection and set a password, then enable the connection. Keep it open while streaming; backgrounding it stops the camera and server.
 2. The desktop discovers enabled phones with native Android NSD / mDNS on the local network. Select a phone; enter its password first if protected. A direct pairing link works as a fallback: copy it into the desktop field using the clipboard button or Ctrl/Cmd+V. Hover actions to see their labels.
 3. For Wi-Fi, put both devices on the same reachable network and press the Wi-Fi icon. The phone listens on TCP 4937. A guest network/client isolation or firewall can block it. Pairing works without internet or a cloud account.
 4. For USB, install Android platform-tools (`adb`), enable USB debugging on the phone, authorize this desktop, and press USB. The desktop allocates and removes its own ADB forward. `--serial DEVICE_ID` chooses a device if several are attached.
@@ -26,27 +26,31 @@ Discovery works across Wi-Fi and Ethernet on the same LAN and on shared hotspots
 
 Password authentication uses PBKDF2-HMAC-SHA256 (210,000 rounds, random salt) and a fresh HMAC challenge bound to the TLS certificate. The password is never sent as plaintext. Android keeps a derived credential in app-private storage with backups disabled; the desktop keeps the entered password in memory. Missing/wrong credentials are rejected before camera capabilities or video. Turning protection on/off or changing the password stops an active connection; re-enable it to apply the new gate. Open discovery is unauthenticated; for identity assurance, compare/use the pairing link copied directly from the phone. These checks have functional tests, not an independent security audit.
 
+Phone and desktop camera controls share acknowledged settings: pairing adopts the phone's selected lens and sensor mode, edits on either device update both interfaces, and revision checks reject stale desktop writes. Local preview runs without an encoder until the desktop requests a stream. Disabling the connection leaves local preview available; backgrounding the app closes both capture and server. Phone-side GLES effects appear in its preview and encoded video. Heavy desktop effects are visible on the desktop/output; the phone does not receive a return video stream. Editing phone effects transfers processing to the phone.
+
+The [competitor analysis](docs/competitors.md) records MCP REA observations from Iriun Linux 2.9.3, Camo's documented baseline, unknowns and a fair hardware benchmark plan.
+
 ## Controls
 
 | Control | Behavior |
 | --- | --- |
 | Lenses | Public Camera2 IDs and physical sensors routed through logical cameras; no hardcoded Nothing IDs |
-| Sensor resolution / FPS | Every advertised encoder size, all integer rates within valid regular ranges, resolution timing limits and advertised fixed high-speed modes; hardware is the final validator |
+| Sensor resolution / FPS | Format-specific advertised encoder/YUV/texture sizes, all integer rates within valid regular ranges, resolution timing limits and advertised fixed high-speed modes; hardware is the final validator |
 | Output resolution | Editable combobox: Source, 16:9, 4:3, 1:1, 9:16 and 3:2 presets, plus custom even dimensions |
 | Fit / Crop / Stretch | Preserve aspect with bars/crop, or deliberately stretch to the selected output dimensions |
 | Stretch / distortion | Phone or desktop GPU horizontal/vertical stretch, barrel/pincushion, local magnification with center/radius |
 | Background blur | Phone or desktop person segmentation, GPU blur/compositing, mask-rate control and backend benchmarking |
 | Camera ISP | Advertised noise reduction, edge enhancement, chromatic aberration and lens-correction modes |
-| Codec / bitrate | Discovered hardware H.264 and HEVC surface encoders; software encoders are excluded |
-| Gauge | Tests every encoder at the current resolution/FPS/bitrate and applies the best measured result |
+| Transport format / bitrate | Discovered hardware H.264/HEVC encoders, or uncompressed 8-bit YUV420/RGBA; bitrate applies to compressed formats |
+| Gauge | Tests encoders and uncompressed formats at the current resolution/FPS/processing settings; unsupported combinations are reported |
 | Sun / ISO / shutter | Auto/manual exposure, sensitivity and exposure time within advertised limits; shutter angle presets convert to sensor exposure time |
 | Exposure / lock | Compensation and exposure lock where available |
 | Focus / zoom | Continuous-video autofocus or manual diopters, and zoom ratio/crop |
 | White balance | Advertised presets, lock and separate R/G-even/G-odd/B gains |
-| Stabilization / torch | Optical or electronic stabilization, plus torch, if exposed |
+| Stabilization / torch | Optical or electronic stabilization (including Android preview stabilization when exposed), plus torch |
 | Rotate / mirror | Applied to both desktop preview and virtual-camera frames on every platform |
 | Monitoring | Preview-only luminance histogram, zebra thresholds, focus peaking, false color and thirds guides; never burned into the camera source |
-| Photo | RAW DNG saved to `DCIM/OpenCam` on the phone; pauses the video stream |
+| Photo | Choose an advertised RAW size; DNG is saved to `DCIM/OpenCam` and transferred to the paired desktop launch folder. Capture pauses briefly and resumes automatically |
 | Download | All advertised characteristics, latest capture metadata, settings and codec results in `opencam-camera-report.json` in the launch folder |
 | Monitor | Direct virtual-camera output switch and driver status |
 
@@ -76,11 +80,17 @@ The monitor icon opens the output control and driver status. Missing drivers lea
 
 With effects off and Source output, the Android path is Camera2 → MediaCodec input Surface → hardware encoder → pinned TLS/TCP. Exposure, focus, zoom, white balance, stabilization and available noise/edge/lens correction use Camera2 requests in the phone ISP. GPU geometry, output sizing, rotate/mirror and background compositing use Camera2 → SurfaceTexture → native EGL/GLES3 → MediaCodec Surface, before transmission. Geometry uses a shader pass without a full-resolution CPU readback. Unsupported high-speed/GPU combinations are rejected; disable GPU effects for constrained high-speed sessions.
 
+Uncompressed YUV420 goes from Camera2's YUV ImageReader to packed I420, bypassing MediaCodec; sensor/ISP controls still run on the phone, while geometry/blur use Desktop processing. RGBA uses the phone GLES stage and an RGBA ImageReader, preserving phone effects without video compression. Both paths require full-frame CPU packing and more bandwidth; they are not zero-copy and are not Bayer sensor RAW. At 1080p30, pixel payload alone is about 746 Mbps for YUV420 or 1.99 Gbps for RGBA, before transport overhead. Use measured results on your link: compression can give lower latency when bandwidth is limited. On Android 13+, chunks carry the Image dataspace; unknown dataspace uses BT.601 limited range for YUV, which still needs hardware color calibration.
+
+DNG transfers use ordered chunks, a 512 MiB limit, generated destination names, a SHA-256 check and an incomplete `.part` file until verified. An interrupted transfer removes the desktop partial file and preserves the phone original. A successful transfer stores the DNG in the desktop launch folder; transfer failure never deletes a completed phone DNG. This is RAW still capture with sensor metadata, not continuous RAW video.
+
 Background blur is off by default. It uses the bundled Apache-2.0 Google Selfie Segmentation landscape model via open-source MediaPipe Tasks, entirely on-device. Only a 256×144 RGBA sample is read back at the selected mask rate; at most one inference is in flight. Auto warms CPU and GPU with two samples, measures three on the first actual frame, and selects the faster available delegate. This is startup calibration, not a broad device benchmark. Video continues while inference runs; a mask older than 500 ms is discarded and the whole frame stays blurred until a fresh mask arrives. Low-resolution separable GPU blur is mixed with the sharp person region. It identifies people, not arbitrary objects, and can miss hair/fingers or moving edges. ML adds startup work, battery/heat and binary size even though its runtime is lazy. Codec benchmarks include the currently selected processing settings.
 
 The desktop decodes access units directly through libavcodec, converts to BGRA and uploads to Zui. There is no video demux subprocess or JavaScript UI. Desktop decode is currently CPU-based; hardware decode and zero-copy GPU textures are not implemented. Live Camera2 changes are sent at most once per 33 ms, and the preview continuously displays their resulting encoded frames. Sensor-result ISO/shutter values appear in the HUD when available. Monitoring aids process only the desktop preview; they add CPU work when enabled.
 
-The phone retains at most two queued video packets. When it falls behind, it removes queued video, requests a new keyframe and resumes there. A stalled write closes the connection. Desktop preview and virtual-camera writer each retain only the latest decoded frame. Native macOS also drops frames when its driver queue is full. TCP retransmission and OS socket queues still add lag on a congested network.
+Capture, network reading, decoding/color conversion, effects and ML are separate bounded stages. Compressed transport holds at most two pending access units; overflow discards dependent video and requests a keyframe. Uncompressed transport holds one pending/in-flight frame and sends 64 KiB chunks, interleaving controls and DNG data. The desktop decode queue holds at most two pending frames, recovers compressed video at a keyframe, and drops old independent pixel frames. Conversion buffers are reused. Preview and the virtual-camera writer retain the latest frame; processing/ML retain one job. A phone write stalled for 750 ms or peer silent for 3.5 seconds closes the connection. TCP retransmission and OS buffers can still delay video on a congested link.
+
+Transient disconnects reconnect automatically, starting at 100 ms and backing off to at most 2 seconds. Each attempt repeats certificate/token/password checks; authentication and malformed-data failures stop rather than loop. Pairing capabilities trigger capture restoration with current phone settings and retained desktop effects. A three-second receive watchdog catches a silent peer; ping/pong bypasses the phone camera handler. The same recovery applies to Wi-Fi, LAN and the existing ADB forward. A restarted phone app creates a new token and needs pairing again. See [transport architecture](docs/transport.md) for the wire contract and failure behavior.
 
 Benchmarking warms each codec for two seconds and measures for five, recording decoded FPS, received Mbps and average estimated frame age. It selects the lowest estimated age among encoders meeting 90% of the requested FPS, or within 95% of the best measured FPS if none meet the target. Without a usable sensor timestamp, it selects by FPS. Failed codecs are reported and skipped.
 
@@ -143,13 +153,13 @@ adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-android
 adb shell am instrument -w -r dev.opencam.test/dev.opencam.ProcessingTest
 ```
 
-The integration fixture requires Python, OpenSSL and an FFmpeg build with libx264/libx265. It verifies wrong certificate/token and missing/wrong password rejection before capabilities, streaming decode, custom source/output dimensions and FPS, both codecs and benchmark selection.
+The integration fixture requires Python, OpenSSL and an FFmpeg build with libx264/libx265. It verifies wrong certificate/token and missing/wrong password rejection before capabilities, streaming decode, custom source/output dimensions/FPS, all four transport formats and benchmark selection, authenticated reconnect, and exact DNG-file transfer. Android instrumentation checks native YUV/RGBA streaming without an encoder, controls/heartbeats during pixels, transfer checksum, stale-frame rejection and preview restoration after an injected RAW failure, plus the existing GLES/model/control checks. Emulator results do not establish physical phone performance or RAW sensor calibration.
 
-With a real enabled phone, `opencam-probe --pair 'opencam://…' --capabilities` exports its full catalog; `--seconds 10` tests video and `--benchmark` tests encoders. For probe USB, first run `adb forward tcp:4937 tcp:4937`, then add `--usb`. Remove that manual forward afterward with `adb forward --remove tcp:4937`.
+With a real enabled phone, `opencam-probe --pair 'opencam://…' --capabilities` exports its full catalog; `--seconds 10` tests video and `--benchmark` tests transport formats. `--codec opencam.i420` or `--codec opencam.rgba` selects uncompressed streaming; `--raw` captures/downloads a DNG when the lens supports it. For probe USB, first run `adb forward tcp:4937 tcp:4937`, then add `--usb`. Remove that manual forward afterward with `adb forward --remove tcp:4937`.
 
 ## Source
 
-`desktop/ui.rs` contains the Zui/gpui-base controls; `desktop/session.rs` handles TLS and decode; `desktop/webcam.rs` sends direct frames to native camera adapters; `desktop/protocol.rs` validates pairing and packet framing; `desktop/benchmark.rs` measures codecs. `android/app/src/main/java/dev/opencam/` contains the Camera2 catalog, capture/controller, TLS transport and native foreground UI. `desktop/processing.rs` and its `gpu`/`ml` modules own the bounded desktop GPU/CPU and ONNX pipeline. `PhoneProcessor.java` owns the GLES surface pipeline and `BackgroundSegmenter.java` the bounded MediaPipe worker. Third-party dependencies retain their own licenses.
+`desktop/ui.rs` contains the Zui/gpui-base controls; `desktop/session.rs` handles TLS, recovery and the bounded decoder; `desktop/media.rs` validates pixel chunks and DNG downloads; `desktop/webcam.rs` sends direct frames to native camera adapters; `desktop/protocol.rs` validates pairing and packet framing; `desktop/benchmark.rs` measures codecs. `android/app/src/main/java/dev/opencam/` contains the Camera2 catalog, capture/controller, TLS transport and native foreground UI. `desktop/processing.rs` and its `gpu`/`ml` modules own the bounded desktop GPU/CPU and ONNX pipeline. `PhoneProcessor.java` owns the GLES surface pipeline and `BackgroundSegmenter.java` the bounded MediaPipe worker. Third-party dependencies retain their own licenses.
 
 Not implemented: iPhone companion, audio, RAW video streaming, HDR/10-bit video, simultaneous multi-lens streams, OEM-only features, bundled Windows/macOS webcam drivers, hardware desktop decoding, persistent presets and background Android streaming.
 

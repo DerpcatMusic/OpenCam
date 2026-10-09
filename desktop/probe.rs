@@ -1,5 +1,6 @@
 mod auth;
 mod benchmark;
+mod media;
 mod output;
 mod processing;
 mod protocol;
@@ -18,7 +19,7 @@ fn main() -> Result<()> {
     }
     if args.len() < 2 || args[0] != "--pair" {
         bail!(
-            "Usage: opencam-probe --processing-smoke | --pair 'opencam://…' [--benchmark | --capabilities] [--seconds N] [--usb] [--password-stdin] [--size WIDTHxHEIGHT] [--fps N] [--output WIDTHxHEIGHT] [--crop] [--process-on phone|desktop] [--backend auto|gpu|cpu] [--stretch FACTOR] [--background-blur RADIUS]"
+            "Usage: opencam-probe --processing-smoke | --pair 'opencam://…' [--benchmark | --capabilities] [--seconds N] [--usb] [--password-stdin] [--size WIDTHxHEIGHT] [--fps N] [--codec NAME] [--raw] [--output WIDTHxHEIGHT] [--crop] [--process-on phone|desktop] [--backend auto|gpu|cpu] [--stretch FACTOR] [--background-blur RADIUS]"
         );
     }
     let mut pairing = protocol::Pairing::parse(&args[1])?;
@@ -57,6 +58,8 @@ fn main() -> Result<()> {
     let mut configured = None;
     let mut benchmark: Option<benchmark::Benchmark> = None;
     let mut capturing = None;
+    let mut raw_file = None;
+    let mut raw_requested = false;
     let mut reported_progress = String::new();
     loop {
         while let Ok(event) = session.events.try_recv() {
@@ -75,6 +78,25 @@ fn main() -> Result<()> {
                         .first()
                         .context("No exposed cameras")?;
                     let mut settings = protocol::default_settings(&event, camera)?;
+                    if let Some(name) = args
+                        .iter()
+                        .position(|a| a == "--codec")
+                        .and_then(|i| args.get(i + 1))
+                    {
+                        anyhow::ensure!(
+                            event["codecs"].as_array().is_some_and(|codecs| codecs
+                                .iter()
+                                .any(|codec| codec["name"] == *name)),
+                            "Transport format is not advertised"
+                        );
+                        settings["codec"] = json!(name);
+                    }
+                    if protocol::uncompressed(&settings["codec"])
+                        && settings["codec"] == "opencam.i420"
+                    {
+                        settings["processingLocation"] = json!("desktop");
+                    }
+                    let camera = protocol::camera_mode(camera, &settings["codec"]);
                     if let Some(size) = args
                         .iter()
                         .position(|a| a == "--size")
@@ -99,7 +121,7 @@ fn main() -> Result<()> {
                         let fps = fps.parse::<u32>()?;
                         anyhow::ensure!(
                             protocol::normal_fps(
-                                camera,
+                                &camera,
                                 &json!([settings["width"], settings["height"]])
                             )
                             .contains(&(fps as u64)),
@@ -159,7 +181,13 @@ fn main() -> Result<()> {
                 Some("configured") => {
                     configured = Some(event.clone());
                     capturing = Some(Instant::now());
+                    if args.iter().any(|a| a == "--raw") && !raw_requested {
+                        raw_requested = true;
+                        session.send(json!({"type":"raw"}));
+                    }
                 }
+                Some("raw_downloaded") => raw_file = Some(event["path"].clone()),
+                Some("raw_transfer_error") => bail!("{}", event["message"]),
                 Some("disconnected") => bail!("{}", event["message"]),
                 Some("error") if benchmark.is_none() => bail!("{}", event["message"]),
                 _ => {}
@@ -182,7 +210,9 @@ fn main() -> Result<()> {
                 );
                 return Ok(());
             }
-        } else if capturing.is_some_and(|s| s.elapsed() >= Duration::from_secs(duration)) {
+        } else if capturing.is_some_and(|s| s.elapsed() >= Duration::from_secs(duration))
+            && (!raw_requested || raw_file.is_some())
+        {
             if stats.frames == 0 {
                 bail!("Stream configured but produced no decoded frames");
             }
@@ -190,7 +220,7 @@ fn main() -> Result<()> {
             let dimensions = frame
                 .as_ref()
                 .map(|f| (f.width, f.height, f.sequence, f.pixels.len()));
-            let output: Value = json!({"configured":configured, "decodedFrames":stats.frames, "videoBytes":stats.bytes,
+            let output: Value = json!({"rawFile":raw_file,"configured":configured, "decodedFrames":stats.frames, "videoBytes":stats.bytes,
                 "lastEstimatedAgeMs":stats.last_age_ms, "bestRoundTripMs":stats.rtt_ms, "lastFrame":dimensions,"processing":*shared.desktop_processing_report.lock().unwrap()});
             println!("{}", serde_json::to_string_pretty(&output)?);
             return Ok(());

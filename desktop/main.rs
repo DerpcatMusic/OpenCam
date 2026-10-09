@@ -3,6 +3,7 @@ mod auth;
 mod benchmark;
 mod discovery;
 mod frost;
+mod media;
 mod monitor;
 mod output;
 mod processing;
@@ -67,6 +68,7 @@ struct Studio {
     root_focus: FocusHandle,
     catalog: Value,
     settings: Value,
+    phone_revision: Option<u64>,
     metadata: Value,
     processing_report: Value,
     session: Option<session::Session>,
@@ -229,6 +231,7 @@ impl Studio {
             fps: 0.,
             mbps: 0.,
             dirty: None,
+            phone_revision: None,
             dragging: None,
             utility_tx,
             utility_rx,
@@ -253,18 +256,24 @@ impl Studio {
         self.error = error;
     }
     fn connected(&self) -> bool {
-        self.session.is_some() && !self.catalog.is_null()
+        self.session.is_some() && !self.catalog.is_null() && !self.connecting
     }
     fn camera(&self) -> Value {
-        self.catalog["cameras"]
+        let camera = self.catalog["cameras"]
             .as_array()
             .into_iter()
             .flatten()
             .find(|c| c["id"] == self.settings["camera"])
             .cloned()
-            .unwrap_or(Value::Null)
+            .unwrap_or(Value::Null);
+        protocol::camera_mode(&camera, &self.settings["codec"])
     }
-    fn send(&self, message: Value) {
+    fn send(&self, mut message: Value) {
+        if matches!(message["type"].as_str(), Some("configure" | "controls")) {
+            if let Some(revision) = self.phone_revision {
+                message["baseRevision"] = json!(revision);
+            }
+        }
         if let Some(s) = &self.session {
             s.send(message);
         }
@@ -353,6 +362,7 @@ impl Studio {
         self.streaming = false;
         self.connecting = false;
         self.dirty = None;
+        self.phone_revision = None;
         *self.shared.frame.lock().unwrap() = None;
         if let Some(port) = self.usb_port.take() {
             self.remove_forward(port);
@@ -447,16 +457,56 @@ impl Studio {
         }
     }
     fn merge_phone_settings(&mut self, settings: &Value) {
-        let desktop = self.settings["processingLocation"] == "desktop";
-        if let Some(values) = settings.as_object() {
-            for (key, value) in values {
-                if !processing::DESKTOP_KEYS.contains(&key.as_str())
-                    && !(desktop && processing::EFFECT_KEYS.contains(&key.as_str()))
-                {
-                    self.settings[key] = value.clone();
-                }
-            }
+        processing::merge_phone_settings(&mut self.settings, settings);
+    }
+    fn sync_phone_controls(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for (index, value) in [
+            (
+                0,
+                format!("{}x{}", self.settings["width"], self.settings["height"]),
+            ),
+            (2, self.settings["fps"].to_string()),
+        ] {
+            self.format_inputs[index].update(cx, |state, cx| state.set_value(value, window, cx));
         }
+        if self.settings["processingLocation"] != "desktop" {
+            let explicit = self.settings["outputWidth"].as_u64().unwrap_or(0) > 0
+                || self.settings["outputHeight"].as_u64().unwrap_or(0) > 0;
+            let text = if explicit {
+                let options = processing::Options::read(&self.settings).unwrap_or_default();
+                let (w, h) = options.dimensions(
+                    self.settings["width"].as_u64().unwrap_or(0) as u32,
+                    self.settings["height"].as_u64().unwrap_or(0) as u32,
+                );
+                format!("{w}x{h}")
+            } else {
+                "source".into()
+            };
+            if let Ok((w, h)) = output::resolution(&text) {
+                *self.shared.output.lock().unwrap() = output::Output {
+                    width: w,
+                    height: h,
+                    crop: self.settings["outputMode"] == 1,
+                };
+                self.format_inputs[1].update(cx, |state, cx| {
+                    state.set_value(
+                        if w == 0 && h == 0 {
+                            "Source".into()
+                        } else {
+                            format!("{w}x{h}")
+                        },
+                        window,
+                        cx,
+                    )
+                });
+            }
+            *self.shared.rotation.lock().unwrap() =
+                self.settings["phoneRotation"].as_u64().unwrap_or(0) as u16;
+            self.shared
+                .mirror
+                .store(self.settings["phoneMirror"] == true, Ordering::Relaxed);
+        }
+        self.sync_processing();
     }
     fn toggle(&mut self, key: &'static str) {
         let value = !self.settings[key].as_bool().unwrap_or(false);
@@ -573,15 +623,45 @@ impl Studio {
             if let Some(benchmark) = &mut self.benchmark {
                 benchmark.event(&event);
             }
+            if let Some(revision) = event["revision"].as_u64() {
+                self.phone_revision = Some(revision);
+            }
+            if event["origin"] == "phone" && event["settings"].is_object() {
+                self.benchmark = None;
+                let sent = processing::phone_settings(&self.settings);
+                if self.settings["processingLocation"] == "desktop"
+                    && processing::EFFECT_KEYS.iter().any(|key| {
+                        event["settings"]
+                            .get(*key)
+                            .is_some_and(|value| value != &sent[*key])
+                    })
+                {
+                    self.settings["processingLocation"] = json!("phone");
+                }
+            }
             match event["type"].as_str() {
                 Some("capabilities") => {
+                    let reconnect = !self.catalog.is_null();
                     self.catalog = event;
                     let camera = self.catalog["cameras"]
                         .as_array()
-                        .and_then(|c| c.iter().find(|c| c["facing"] == 1).or_else(|| c.first()))
+                        .and_then(|c| {
+                            c.iter()
+                                .find(|c| c["id"] == self.catalog["settings"]["camera"])
+                                .or_else(|| c.iter().find(|c| c["facing"] == 1))
+                                .or_else(|| c.first())
+                        })
                         .cloned();
                     if let Some(camera) = camera {
-                        self.camera_select(camera);
+                        if !reconnect {
+                            self.camera_select(camera);
+                        }
+                        let phone = self.catalog["settings"].clone();
+                        self.merge_phone_settings(&phone);
+                        if self.settings["codec"] == "opencam.i420" {
+                            self.settings["processingLocation"] = json!("desktop");
+                        }
+                        self.sync_phone_controls(window, cx);
                         self.format_inputs[0].update(cx, |state, cx| {
                             state.set_value(
                                 format!("{}x{}", self.settings["width"], self.settings["height"]),
@@ -603,13 +683,26 @@ impl Studio {
                 Some("configured") => {
                     self.streaming = true;
                     if self.benchmark.is_none() {
+                        self.dirty = None;
                         self.merge_phone_settings(&event["settings"]);
+                        self.sync_phone_controls(window, cx);
                         self.message("Camera live", false);
                     }
                 }
-                Some("controls") => {
-                    if self.dirty.is_none() {
+                Some("controls" | "state") => {
+                    if self.dirty.is_none()
+                        || event["origin"] == "phone"
+                        || event["conflict"] == true
+                    {
+                        self.dirty = None;
                         self.merge_phone_settings(&event["settings"]);
+                        self.sync_phone_controls(window, cx);
+                    }
+                    if event["conflict"] == true {
+                        self.message(
+                            "Settings changed on the phone; try your adjustment again",
+                            true,
+                        );
                     }
                 }
                 Some("stopped") => {
@@ -619,6 +712,25 @@ impl Studio {
                 Some("metadata") => self.metadata = event["values"].clone(),
                 Some("processing") if self.settings["processingLocation"] != "desktop" => {
                     self.processing_report = event.clone()
+                }
+                Some("reconnecting") => {
+                    self.connecting = true;
+                    self.streaming = false;
+                    self.dirty = None;
+                    self.benchmark = None;
+                    self.message(
+                        format!("Reconnecting · attempt {}", event["attempt"]),
+                        false,
+                    );
+                }
+                Some("raw_transfer_error") => self.message(
+                    event["message"]
+                        .as_str()
+                        .unwrap_or("DNG transfer failed; file remains on phone"),
+                    true,
+                ),
+                Some("raw_downloaded") => {
+                    self.message(event["message"].as_str().unwrap_or("DNG downloaded"), false)
                 }
                 Some("raw_saved") => self.message(
                     event["message"].as_str().unwrap_or("RAW saved on phone"),
@@ -637,6 +749,11 @@ impl Studio {
                         .to_owned();
                 }
                 Some("error") => {
+                    if event["settings"].is_object() {
+                        self.dirty = None;
+                        self.merge_phone_settings(&event["settings"]);
+                        self.sync_phone_controls(window, cx);
+                    }
                     self.message(event["message"].as_str().unwrap_or("Camera error"), true)
                 }
                 Some("disconnected") => {

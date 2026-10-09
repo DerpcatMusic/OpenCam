@@ -18,12 +18,22 @@ import org.json.JSONObject;
 final class Bridge implements AutoCloseable {
     static final int PORT = 4937, MAX_PACKET = 16 * 1024 * 1024;
     record Packet(int kind, byte[] data) { }
+    record Pixels(byte[] data, long pts, int dataSpace, long epoch) { }
+    static final class RawTransfer implements AutoCloseable {
+        final InputStream input; final byte[] id; final String text; final long size;
+        final MessageDigest digest; long offset;
+        RawTransfer(InputStream input, long size) throws Exception {
+            this.input=input; this.size=size; id=Auth.random(16); text=hex(id); digest=MessageDigest.getInstance("SHA-256");
+        }
+        public void close() { try { input.close(); } catch (IOException ignored) { } }
+    }
     interface Listener {
         void command(JSONObject command);
         void disconnected();
         void status(String status);
     }
     final Listener listener;
+    final Context context;
     final String token, fingerprint;
     final SSLServerSocket server;
     final Auth.Credential credential;
@@ -35,6 +45,7 @@ final class Bridge implements AutoCloseable {
     volatile Runnable syncFrame = () -> { };
 
     Bridge(Context context, Listener listener, Auth.Credential credential) throws Exception {
+        this.context = context;
         this.credential = credential;
         this.listener = listener;
         byte[] secret = new byte[16];
@@ -135,13 +146,20 @@ final class Bridge implements AutoCloseable {
         final SSLSocket socket;
         final DataInputStream input;
         final DataOutputStream output;
-        final ArrayBlockingQueue<Packet> outgoing = new ArrayBlockingQueue<>(6);
+        final ArrayBlockingQueue<Packet> outgoing = new ArrayBlockingQueue<>(32);
+        final ArrayBlockingQueue<Packet> encoded = new ArrayBlockingQueue<>(2);
+        final Semaphore ready = new Semaphore(0);
+        Pixels pixels;
+        RawTransfer raw;
+        volatile boolean writingPixels;
+        volatile long videoEpoch;
         volatile boolean alive = true, waitingKeyframe = true;
         volatile long writeStarted;
+        volatile long lastCommand;
         Peer(SSLSocket socket) throws IOException {
             this.socket = socket;
-            input = new DataInputStream(socket.getInputStream());
-            output = new DataOutputStream(socket.getOutputStream());
+            input = new DataInputStream(new BufferedInputStream(socket.getInputStream(), 65536));
+            output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(), 128 * 1024));
         }
         JSONObject readJson() throws Exception {
             int kind = input.readUnsignedByte(), size = input.readInt();
@@ -155,22 +173,39 @@ final class Bridge implements AutoCloseable {
             output.writeByte(1); output.writeInt(bytes.length); output.write(bytes); output.flush();
         }
         void start() {
+            lastCommand=SystemClock.elapsedRealtime();
             new Thread(() -> {
-                try { while (alive) listener.command(readJson()); }
+                try { while (alive) {
+                    JSONObject command = readJson();lastCommand=SystemClock.elapsedRealtime();
+                    if (command.optString("type").equals("ping")) send(Json.object("type","pong","sent",command.optDouble("sent"),"phoneUs",SystemClock.elapsedRealtimeNanos()/1000));
+                    else listener.command(command);
+                } }
                 catch (Exception e) { if (alive) listener.status(e.getMessage() == null ? "Desktop disconnected" : "Desktop disconnected: " + e.getMessage()); }
                 finally { close(); }
             }, "opencam-commands").start();
             new Thread(() -> {
                 try {
+                    byte[] chunk = new byte[65536];
                     while (alive) {
-                        Packet p = outgoing.poll(1, TimeUnit.SECONDS);
-                        if (p == null) continue;
-                        writeStarted = SystemClock.elapsedRealtime();
-                        output.writeByte(p.kind);
-                        output.writeInt(p.data.length);
-                        output.write(p.data);
-                        output.flush();
-                        writeStarted = 0;
+                        ready.tryAcquire(1, TimeUnit.SECONDS); ready.drainPermits();
+                        Packet p = outgoing.poll();
+                        if (p == null) p = encoded.poll();
+                        if (p != null) { writePacket(p); writeRawChunk(chunk); wake(); continue; }
+                        Pixels frame;
+                        synchronized (this) { frame = pixels; pixels = null; writingPixels = frame != null; }
+                        if (frame != null) {
+                            try { for (int offset=0; offset<frame.data.length && alive && frame.epoch==videoEpoch;) {
+                                for (int i=0; i<4 && (p=outgoing.poll())!=null; i++) writePacket(p);
+                                if(frame.epoch!=videoEpoch)break;
+                                int count=Math.min(65536,frame.data.length-offset);
+                                writeStarted=SystemClock.elapsedRealtime();
+                                output.writeByte(3); output.writeInt(20+count); output.writeLong(frame.pts); output.writeInt(frame.data.length); output.writeInt(offset);output.writeInt(frame.dataSpace);
+                                output.write(frame.data,offset,count); output.flush(); writeStarted=0; offset+=count;
+                                writeRawChunk(chunk);
+                            } } finally { writingPixels=false; }
+                        }
+                        writeRawChunk(chunk);
+                        if (frame != null || raw != null) wake();
                     }
                 } catch (Exception e) { if (alive) listener.status("Transport interrupted: " + e.getMessage()); }
                 finally { close(); }
@@ -179,47 +214,70 @@ final class Bridge implements AutoCloseable {
                 try {
                     while (alive) {
                         Thread.sleep(250);
-                        if (writeStarted != 0 && SystemClock.elapsedRealtime() - writeStarted > 750) close();
+                        long now=SystemClock.elapsedRealtime();
+                        if ((writeStarted != 0 && now-writeStarted > 750) || now-lastCommand > 3500) close();
                     }
                 } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             }, "opencam-watchdog").start();
         }
+        void writeRawChunk(byte[] chunk) throws IOException {
+            RawTransfer file;
+            synchronized(this){file=raw;if(file==null || !outgoing.isEmpty())return;}
+            int count=file.input.read(chunk);
+            if(count<0){
+                if(file.offset!=file.size)throw new IOException("RAW file changed during transfer");
+                writePacket(new Packet(1,Json.object("type","raw_file_end","id",file.text,"sha256",hex(file.digest.digest())).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                file.close();synchronized(this){if(raw==file)raw=null;}
+            }else if(count>0){
+                writeStarted=SystemClock.elapsedRealtime();output.writeByte(4);output.writeInt(24+count);output.write(file.id);output.writeLong(file.offset);output.write(chunk,0,count);output.flush();writeStarted=0;
+                file.digest.update(chunk,0,count);file.offset+=count;
+            }
+        }
+        void wake() { if (ready.availablePermits()==0) ready.release(); }
+        void writePacket(Packet packet) throws IOException {
+            writeStarted=SystemClock.elapsedRealtime(); output.writeByte(packet.kind); output.writeInt(packet.data.length); output.write(packet.data); output.flush(); writeStarted=0;
+        }
         synchronized void send(JSONObject value) {
             byte[] bytes = value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            if (bytes.length > MAX_PACKET || !outgoing.offer(new Packet(1, bytes))) close();
+            if (bytes.length > MAX_PACKET || !outgoing.offer(new Packet(1, bytes))) close(); else wake();
         }
-        synchronized void video(byte[] data, long pts, int flags, byte[] config) {
+        synchronized void video(byte[] data, long pts, int flags, byte[] config,long epoch) {
+            if(!alive || epoch!=videoEpoch)return;
             boolean key = (flags & android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0;
-            long queuedVideo = outgoing.stream().filter(p -> p.kind == 2).count();
-            if (queuedVideo >= 2) {
-                outgoing.removeIf(p -> p.kind == 2);
-                waitingKeyframe = true;
-                syncFrame.run();
-            }
+            if (encoded.remainingCapacity()==0) { encoded.clear(); waitingKeyframe=true; syncFrame.run(); }
             if (waitingKeyframe && !key) return;
-            waitingKeyframe = false;
-            byte[] header = key && config != null ? config : new byte[0];
-            ByteBuffer packet = ByteBuffer.allocate(12 + header.length + data.length).order(ByteOrder.BIG_ENDIAN);
+            waitingKeyframe=false;
+            byte[] header=key && config!=null ? config : new byte[0];
+            ByteBuffer packet=ByteBuffer.allocate(12+header.length+data.length).order(ByteOrder.BIG_ENDIAN);
             packet.putLong(pts).putInt(flags).put(header).put(data);
-            if (packet.capacity() > MAX_PACKET || !outgoing.offer(new Packet(2, packet.array()))) {
-                waitingKeyframe = true;
-                syncFrame.run();
-            }
+            if (packet.capacity()>MAX_PACKET || !encoded.offer(new Packet(2,packet.array()))) { waitingKeyframe=true;syncFrame.run(); } else wake();
         }
-        void resetVideo() {
-            outgoing.removeIf(p -> p.kind == 2);
-            waitingKeyframe = true;
+        synchronized boolean pixelsReady() { return alive && pixels==null && !writingPixels; }
+        synchronized void pixels(byte[] data,long pts,int dataSpace,long epoch) { if (epoch==videoEpoch && pixelsReady()) { pixels=new Pixels(data,pts,dataSpace,videoEpoch);wake(); } }
+        void resetVideo() { synchronized (this) { videoEpoch++;encoded.clear();pixels=null;waitingKeyframe=true; } }
+        synchronized void raw(android.net.Uri uri) throws Exception {
+            if (raw!=null) throw new IOException("A RAW transfer is already active");
+            long size; try (var file=context.getContentResolver().openAssetFileDescriptor(uri,"r")) {
+                if (file==null) throw new IOException("RAW file is unavailable"); size=file.getLength();if(size<0)size=file.getParcelFileDescriptor().getStatSize();
+            }
+            if (size<=0 || size>512L*1024*1024) throw new IOException("RAW file exceeds transfer limit");
+            InputStream input=context.getContentResolver().openInputStream(uri);
+            if (input==null) throw new IOException("RAW file is unavailable");
+            try { raw=new RawTransfer(input,size); send(Json.object("type","raw_file_begin","id",raw.text,"bytes",size,"format","dng")); }
+            catch (Exception e) { input.close();raw=null;throw e; }
         }
         @Override public synchronized void close() {
             if (!alive) return;
-            alive = false;
-            try { socket.close(); } catch (IOException ignored) { }
+            alive = false; ready.release(); pixels=null;encoded.clear();outgoing.clear();
+            if (raw!=null) { raw.close();raw=null; }
+            Runnable disconnect=()->{try{socket.close();}catch(IOException ignored){}};
+            if(android.os.Looper.myLooper()==android.os.Looper.getMainLooper())new Thread(disconnect,"opencam-close").start();else disconnect.run();
             if (peer == this) { peer = null; listener.disconnected(); }
         }
     }
 
     void send(JSONObject value) { Peer p = peer; if (p != null) p.send(value); }
-    void video(byte[] data, long pts, int flags, byte[] config) { Peer p = peer; if (p != null) p.video(data, pts, flags, config); }
+    void raw(android.net.Uri uri) throws Exception { Peer p=peer;if(p!=null)p.raw(uri); }
     void resetVideo() { Peer p = peer; if (p != null) p.resetVideo(); }
     @Override public void close() {
         running = false;

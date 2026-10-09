@@ -341,6 +341,38 @@ impl Studio {
             self.menu = None;
             return;
         }
+        if key == "rawSize" {
+            self.settings["rawWidth"] = value[0].clone();
+            self.settings["rawHeight"] = value[1].clone();
+            self.dirty.get_or_insert(Instant::now());
+            self.menu = None;
+            return;
+        }
+        if key == "codec" {
+            self.settings["codec"] = value.clone();
+            if protocol::uncompressed(&value) && value == "opencam.i420" {
+                self.settings["processingLocation"] = json!("desktop");
+            }
+            let camera = self.camera();
+            let size = json!([self.settings["width"], self.settings["height"]]);
+            if let Some(sizes) = camera["sizes"].as_array() {
+                if !sizes.contains(&size) {
+                    if let Some(size) = sizes.first() {
+                        self.settings["width"] = size[0].clone();
+                        self.settings["height"] = size[1].clone();
+                    }
+                }
+            }
+            if let Some(fps) = protocol::normal_fps(
+                &camera,
+                &json!([self.settings["width"], self.settings["height"]]),
+            )
+            .into_iter()
+            .min_by_key(|f| f.abs_diff(self.settings["fps"].as_u64().unwrap_or(30)))
+            {
+                self.settings["fps"] = json!(fps);
+            }
+        }
         if key == "size" {
             self.settings["width"] = value[0].clone();
             self.settings["height"] = value[1].clone();
@@ -380,7 +412,7 @@ impl Studio {
                 self.start_stream();
             }
         }
-        if key == "size" {
+        if key == "size" || key == "codec" {
             self.format_inputs[0].update(cx, |state, cx| {
                 state.set_value(
                     format!("{}x{}", self.settings["width"], self.settings["height"]),
@@ -389,7 +421,7 @@ impl Studio {
                 )
             });
         }
-        if key == "fps" || key == "size" {
+        if key == "fps" || key == "size" || key == "codec" {
             self.format_inputs[2].update(cx, |state, cx| {
                 state.set_value(self.settings["fps"].to_string(), window, cx)
             });
@@ -729,7 +761,7 @@ impl Studio {
             .child(
                 self.selector(
                     "codec",
-                    "Codec",
+                    "Transport format",
                     codec
                         .and_then(|c| c["label"].as_str())
                         .unwrap_or("—")
@@ -751,17 +783,41 @@ impl Studio {
                     cx,
                 ),
             )
-            .child(self.slider(
-                Slider {
-                    key: "bitrate",
-                    label: "Bitrate",
-                    min,
-                    max,
-                    log: true,
-                },
-                ready,
-                cx,
-            ))
+            .children((!protocol::uncompressed(&self.settings["codec"])).then(|| {
+                self.slider(
+                    Slider {
+                        key: "bitrate",
+                        label: "Bitrate",
+                        min,
+                        max,
+                        log: true,
+                    },
+                    ready,
+                    cx,
+                )
+            }))
+            .children((camera["raw"] == true).then(|| {
+                self.selector(
+                    "rawSize",
+                    "RAW resolution",
+                    if self.settings["rawWidth"].as_u64().unwrap_or(0) > 0 {
+                        format!(
+                            "{} × {}",
+                            self.settings["rawWidth"], self.settings["rawHeight"]
+                        )
+                    } else {
+                        "Full sensor".into()
+                    },
+                    camera["rawSizes"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|size| (format!("{} × {}", size[0], size[1]), size.clone()))
+                        .collect(),
+                    ready,
+                    cx,
+                )
+            }))
             .child(
                 button("apply-stream", "Apply stream", false, ready)
                     .w_full()
@@ -1913,7 +1969,7 @@ impl Studio {
                 icon_button(
                     "raw",
                     "photo",
-                    "Capture RAW DNG on phone; pauses video",
+                    "Capture sensor RAW DNG and download; pauses video briefly",
                     false,
                     ready && self.camera()["raw"] == true,
                 )
