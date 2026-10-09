@@ -16,8 +16,8 @@ public final class ProcessingTest extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
-            checkShaders(); checkModel(); checkValidation();
-            result.putString("stream","GLES3 surface transforms, blur passes, CPU segmentation and validation passed");
+            checkShaders(); checkModel(); checkValidation(); checkSettings(); checkCameraSync();
+            result.putString("stream","GLES3 encoder/preview parity, blur, segmentation, native lens switching, phone/desktop sync, revisions and validation passed");
             result.putString("checks",checks.toString());
             finish(Activity.RESULT_OK,result);
         } catch (Throwable e) {
@@ -60,8 +60,12 @@ public final class ProcessingTest extends Instrumentation {
         AtomicReference<Exception> error=new AtomicReference<>();
         JSONObject settings=Json.object("width",320,"height",240,"outputWidth",160,"outputHeight",120,"mlDelegate","cpu");
         try (ImageReader reader=ImageReader.newInstance(160,120,PixelFormat.RGBA_8888,2);
+                ImageReader preview=ImageReader.newInstance(160,120,PixelFormat.RGBA_8888,2);
                 PhoneProcessor processor=new PhoneProcessor(getTargetContext(),reader.getSurface(),320,240,160,120,settings,error::set)) {
+            processor.preview(preview.getSurface());
             byte[] original=frame(processor,reader,error);
+            byte[] displayed=frame(processor,preview,error);
+            require(java.util.Arrays.equals(original,displayed), "Preview and encoder GPU pixels differ");
             settings.put("stretchX",1.8).put("distortion",.35).put("bulge",.4);
             processor.update(settings); byte[] warped=frame(processor,reader,error);
             int changed=0, nonBlack=0;
@@ -108,4 +112,94 @@ public final class ProcessingTest extends Instrumentation {
         try { PhoneProcessor.outputWidth(settings); } catch (IllegalArgumentException expected) { rejected=true; }
         require(rejected,"Odd output dimensions were accepted");
     }
+    void checkSettings() throws Exception {
+        JSONObject camera = new JSONObject("{\"fpsRanges\":[[10,20],[30,60]],\"frameDurations\":[{\"size\":[1280,720],\"minFrameNs\":25000000}]}");
+        var fps = CaptureSettings.fps(camera, new org.json.JSONArray(new int[]{1280,720}));
+        require(fps.contains(17) && fps.contains(40) && !fps.contains(25) && !fps.contains(41), "FPS must intersect sensor ranges and frame durations");
+        require(!CaptureSettings.stale(Json.object("baseRevision", 7), 7), "Current revision rejected");
+        require(CaptureSettings.stale(Json.object("baseRevision", 6), 7), "Stale desktop command accepted");
+        require(!CaptureSettings.stale(Json.object("settings", new JSONObject()), 7), "Version 1 compatibility failed");
+    }
+    void await(java.util.function.BooleanSupplier condition, String failure) throws Exception {
+        for (int i=0;i<200;i++) { if (condition.getAsBoolean()) return; Thread.sleep(25); }
+        throw new AssertionError(failure);
+    }
+    void checkCameraSync() throws Exception {
+        MainActivity activity = (MainActivity) startActivitySync(new android.content.Intent(getTargetContext(), MainActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+        try {
+            await(() -> activity.settings != null && activity.controller != null && activity.controller.session != null, "Native preview did not open");
+            require(activity.controller.encoder == null, "Local preview must not run a video encoder");
+            checkBridgeSync(activity);
+            long first = activity.revision;
+            int ev = activity.settings.optInt("ev");
+            runOnMainSync(() -> activity.apply(Json.object("ev", ev), false));
+            await(() -> activity.revision > first, "Phone change was not acknowledged");
+            long second = activity.revision;
+            activity.command(Json.object("type", "controls", "baseRevision", second, "settings", Json.object("ev", ev)));
+            await(() -> activity.revision > second, "Desktop change did not reach the phone UI");
+            long third = activity.revision;
+            activity.command(Json.object("type", "controls", "baseRevision", first, "settings", Json.object("ev", ev + 1)));
+            await(() -> activity.status.getText().toString().contains("other device"), "Stale command conflict was not shown");
+            require(activity.revision == third && activity.settings.optInt("ev") == ev, "Stale command overwrote phone settings");
+            activity.command(Json.object("type", "controls", "baseRevision", third, "settings", Json.object("zoom", 100000)));
+            await(() -> activity.status.getText().toString().contains("Zoom"), "Invalid remote sensor control was not rejected");
+            require(activity.revision == third, "Rejected control advanced the revision");
+            String original = activity.settings.optString("camera");
+            org.json.JSONArray cameras = activity.catalog.getJSONArray("cameras");
+            if (cameras.length() > 1) {
+                JSONObject next = cameras.getJSONObject(0);
+                if (next.getString("id").equals(original)) next = cameras.getJSONObject(1);
+                JSONObject selected = CaptureSettings.defaults(activity.catalog, next);
+                runOnMainSync(() -> activity.apply(selected, true));
+                await(() -> activity.settings.optString("camera").equals(selected.optString("camera")) && activity.controller.session != null, "Front/rear lens switch failed");
+            }
+            checks.put("cameraSync", Json.object("localRevision", first, "remoteRevision", third, "staleRejected", true, "previewWithoutEncoder", true, "cameraPaths", cameras.length()));
+        } finally { runOnMainSync(activity::finish); }
+    }
+
+    void checkBridgeSync(MainActivity activity) throws Exception {
+        runOnMainSync(activity::enable);
+        require(activity.bridge != null, "Native connection did not open");
+        javax.net.ssl.SSLContext tls = javax.net.ssl.SSLContext.getInstance("TLS");
+        tls.init(null, new javax.net.ssl.TrustManager[]{new javax.net.ssl.X509TrustManager() {
+            public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+            public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String auth) { }
+            public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String auth) { }
+        }}, null);
+        try (javax.net.ssl.SSLSocket socket = (javax.net.ssl.SSLSocket) tls.getSocketFactory().createSocket("127.0.0.1", Bridge.PORT)) {
+            socket.setSoTimeout(5000); socket.startHandshake();
+            require(Bridge.hex(java.security.MessageDigest.getInstance("SHA-256").digest(socket.getSession().getPeerCertificates()[0].getEncoded())).equals(activity.bridge.fingerprint), "Test peer pin mismatch");
+            var output = new java.io.DataOutputStream(socket.getOutputStream()); var input = new java.io.DataInputStream(socket.getInputStream());
+            write(output, Json.object("type", "hello", "protocol", 1, "token", activity.bridge.token));
+            JSONObject catalog = event(input, "capabilities");
+            require(catalog.getJSONObject("settings").getString("camera").equals(activity.settings.getString("camera")), "Pairing discarded phone camera selection");
+            long revision = catalog.getLong("revision");
+            write(output, Json.object("type", "controls", "baseRevision", revision, "settings", Json.object("ev", 0)));
+            JSONObject remote = event(input, "controls");
+            await(() -> activity.revision == remote.optLong("revision"), "Wire controls did not sync phone UI");
+            runOnMainSync(() -> activity.apply(Json.object("ev", 0), false));
+            JSONObject local = event(input, "controls");
+            require(local.getString("origin").equals("phone") && local.getLong("revision") > remote.getLong("revision"), "Phone change was not broadcast to desktop");
+            write(output, Json.object("type", "controls", "baseRevision", revision, "settings", Json.object("ev", 1)));
+            JSONObject stale = event(input, "state");
+            require(stale.getBoolean("conflict") && stale.getJSONObject("settings").getInt("ev") == 0, "Stale wire command overwrote phone");
+        } finally { runOnMainSync(activity::disable); }
+        await(() -> activity.controller.session != null, "Disconnect did not restore local preview");
+        checks.put("tlsControlSync", true);
+    }
+    void write(java.io.DataOutputStream output, JSONObject command) throws Exception {
+        byte[] bytes = command.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        output.writeByte(1); output.writeInt(bytes.length); output.write(bytes); output.flush();
+    }
+    JSONObject event(java.io.DataInputStream input, String type) throws Exception {
+        for (int i=0;i<100;i++) {
+            int kind=input.readUnsignedByte(), size=input.readInt(); require(size>0 && size<=Bridge.MAX_PACKET, "Invalid native packet size");
+            byte[] bytes=new byte[size]; input.readFully(bytes); if (kind!=1) continue;
+            JSONObject event=new JSONObject(new String(bytes,java.nio.charset.StandardCharsets.UTF_8));
+            if (event.optString("type").equals(type)) return event;
+            if (event.optString("type").equals("error")) throw new AssertionError(event.optString("message"));
+        }
+        throw new AssertionError("Missing event: " + type);
+    }
+
 }

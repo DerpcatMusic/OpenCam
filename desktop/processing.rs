@@ -196,6 +196,20 @@ pub fn phone_settings(settings: &Value) -> Value {
     v
 }
 
+#[allow(dead_code)] // The headless probe has no settings editor.
+pub fn merge_phone_settings(settings: &mut Value, phone: &Value) {
+    let desktop = settings["processingLocation"] == "desktop";
+    if let Some(values) = phone.as_object() {
+        for (key, value) in values {
+            if !DESKTOP_KEYS.contains(&key.as_str())
+                && !(desktop && EFFECT_KEYS.contains(&key.as_str()))
+            {
+                settings[key] = value.clone();
+            }
+        }
+    }
+}
+
 fn sample(p: &[u8], w: u32, h: u32, uv: [f32; 2]) -> [f32; 4] {
     let x = (uv[0] * w as f32 - 0.5).clamp(0., w as f32 - 1.);
     let y = (uv[1] * h as f32 - 0.5).clamp(0., h as f32 - 1.);
@@ -554,6 +568,21 @@ pub fn smoke() -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn phone_state_updates_sensor_controls_without_erasing_desktop_processing() {
+        let mut settings = json!({"processingLocation":"desktop","desktopBackend":"gpu","stretchX":2.,"camera":"rear","fps":30});
+        let phone = json!({"camera":"front","fps":24,"zoom":2.,"torch":true,"iso":200,"stretchX":1.,"processingLocation":"phone"});
+        merge_phone_settings(&mut settings, &phone);
+        assert_eq!(settings["camera"], "front");
+        assert_eq!(settings["fps"], 24);
+        assert_eq!(settings["torch"], true);
+        assert_eq!(settings["stretchX"], 2.);
+        assert_eq!(settings["processingLocation"], "desktop");
+        assert_eq!(settings["desktopBackend"], "gpu");
+        settings["processingLocation"] = json!("phone");
+        merge_phone_settings(&mut settings, &phone);
+        assert_eq!(settings["stretchX"], 1.);
+    }
     #[test]
     fn rejects_invalid_effects_and_strips_desktop_controls_at_phone_boundary() {
         for bad in [

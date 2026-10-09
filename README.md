@@ -14,7 +14,7 @@ Download a package from [GitHub Releases](https://github.com/DerpcatMusic/OpenCa
 
 OpenCam uses `dev.opencam` on Android and `opencam://` pairing links. The earlier Lenslink prototype is a separate app: install both OpenCam builds and pair again. Existing Lenslink settings are not migrated.
 
-1. Install the APK on an Android 11+ phone. Open OpenCam, grant Camera permission, optionally enable Password protection and set a password, then enable the connection. Keep it open while streaming; backgrounding it stops the camera and server.
+1. Install the APK on an Android 11+ phone. Open OpenCam and grant Camera permission for local preview. The vertical icons open camera, format, sensor and phone effects controls. Open the connection icon, optionally enable Password protection and set a password, then enable the connection. Keep it open while streaming; backgrounding it stops the camera and server.
 2. The desktop discovers enabled phones with native Android NSD / mDNS on the local network. Select a phone; enter its password first if protected. A direct pairing link works as a fallback: copy it into the desktop field using the clipboard button or Ctrl/Cmd+V. Hover actions to see their labels.
 3. For Wi-Fi, put both devices on the same reachable network and press the Wi-Fi icon. The phone listens on TCP 4937. A guest network/client isolation or firewall can block it. Pairing works without internet or a cloud account.
 4. For USB, install Android platform-tools (`adb`), enable USB debugging on the phone, authorize this desktop, and press USB. The desktop allocates and removes its own ADB forward. `--serial DEVICE_ID` chooses a device if several are attached.
@@ -25,6 +25,10 @@ Enabled phones advertise a temporary token and certificate pin over mDNS. **With
 Discovery works across Wi-Fi and Ethernet on the same LAN and on shared hotspots if multicast and client-to-client traffic are allowed. It does not bypass OS firewalls, router guest isolation or separate subnets. The desktop opens an outbound TCP connection to the phone; no internet/cloud relay is involved. mDNS uses UDP 5353, video uses TCP 4937. USB is the fallback when the network blocks traffic.
 
 Password authentication uses PBKDF2-HMAC-SHA256 (210,000 rounds, random salt) and a fresh HMAC challenge bound to the TLS certificate. The password is never sent as plaintext. Android keeps a derived credential in app-private storage with backups disabled; the desktop keeps the entered password in memory. Missing/wrong credentials are rejected before camera capabilities or video. Turning protection on/off or changing the password stops an active connection; re-enable it to apply the new gate. Open discovery is unauthenticated; for identity assurance, compare/use the pairing link copied directly from the phone. These checks have functional tests, not an independent security audit.
+
+Phone and desktop camera controls share acknowledged settings: pairing adopts the phone's selected lens and sensor mode, edits on either device update both interfaces, and revision checks reject stale desktop writes. Local preview runs without an encoder until the desktop requests a stream. Disabling the connection leaves local preview available; backgrounding the app closes both capture and server. Phone-side GLES effects appear in its preview and encoded video. Heavy desktop effects are visible on the desktop/output; the phone does not receive a return video stream. Editing phone effects transfers processing to the phone.
+
+The [competitor analysis](docs/competitors.md) records MCP REA observations from Iriun Linux 2.9.3, Camo's documented baseline, unknowns and a fair hardware benchmark plan.
 
 ## Controls
 

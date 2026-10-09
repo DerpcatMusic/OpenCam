@@ -20,7 +20,13 @@ import org.json.*;
 final class CameraController implements AutoCloseable {
     final Context context;
     final Catalog catalog;
-    final Bridge bridge;
+    volatile Bridge bridge;
+    final java.util.function.Consumer<JSONObject> observer;
+    Surface preview;
+    android.graphics.SurfaceTexture previewTexture;
+    boolean streaming;
+    long revision;
+    String origin = "phone";
     final HandlerThread thread = new HandlerThread("opencam-camera");
     final Handler handler;
     CameraDevice camera;
@@ -38,24 +44,71 @@ final class CameraController implements AutoCloseable {
     ColorSpaceTransform autoColorTransform;
     String colorTransformLens;
 
-    CameraController(Context context, Catalog catalog, Bridge bridge) {
+    CameraController(Context context, Catalog catalog, java.util.function.Consumer<JSONObject> observer) {
         this.context = context;
         this.catalog = catalog;
-        this.bridge = bridge;
+        this.observer = observer;
         thread.start();
         handler = new Handler(thread.getLooper());
-        bridge.syncFrame = () -> handler.post(this::requestSync);
     }
 
-    void command(JSONObject command) {
+    void attach(Bridge value) {
+        bridge = value;
+        if (value != null) value.syncFrame = () -> handler.post(this::requestSync);
+        else handler.post(() -> { try { if (current != null && streaming) configure(current, false); } catch (Exception e) { fail(e); } });
+    }
+
+    void preview(android.graphics.SurfaceTexture value) {
+        handler.post(() -> {
+            stop();
+            if (preview != null) preview.release();
+            if (previewTexture != null && previewTexture != value) previewTexture.release();
+            previewTexture = value;
+            preview = value == null ? null : new Surface(value);
+            try {
+                if (value == null) { stop(); return; }
+                if (current == null) {
+                    JSONObject camera = null;
+                    for (Catalog.Lens candidate : catalog.lenses.values()) {
+                        if (camera == null || candidate.chars().get(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_BACK) {
+                            camera = catalog.describe(candidate);
+                            if (camera.optInt("facing") == CameraMetadata.LENS_FACING_BACK) break;
+                        }
+                    }
+                    if (camera == null) throw new IllegalStateException("No cameras exposed by Android");
+                    current = CaptureSettings.defaults(catalog.export(), camera);
+                }
+                configure(current, streaming);
+            } catch (Exception e) { fail(e); }
+        });
+    }
+
+    void send(JSONObject event) {
+        Bridge active = bridge;
+        if (active != null) active.send(event);
+        try { observer.accept(CaptureSettings.copy(event)); } catch (JSONException e) { throw new IllegalStateException(e); }
+    }
+
+    JSONObject state(String type) {
+        return Json.object("type", type, "settings", current, "revision", revision, "streaming", streaming, "origin", origin);
+    }
+
+    void local(JSONObject command) { command(command, true); }
+    void command(JSONObject command) { command(command, false); }
+    void command(JSONObject command, boolean local) {
         handler.post(() -> {
             try {
-                switch (command.getString("type")) {
-                    case "hello", "capabilities" -> bridge.send(catalog.export());
-                    case "ping" -> bridge.send(Json.object("type", "pong", "sent", command.optDouble("sent"), "phoneUs", SystemClock.elapsedRealtimeNanos() / 1000));
-                    case "configure" -> configure(command.getJSONObject("settings"));
+                String type = command.getString("type");
+                if (Set.of("configure", "controls").contains(type) && CaptureSettings.stale(command, revision)) {
+                    send(state("state").put("conflict", true)); return;
+                }
+                if (Set.of("configure", "controls").contains(type)) origin = local ? "phone" : "desktop";
+                switch (type) {
+                    case "hello", "capabilities" -> send(CaptureSettings.copy(catalog.export()).put("settings", current).put("revision", revision));
+                    case "ping" -> send(Json.object("type", "pong", "sent", command.optDouble("sent"), "phoneUs", SystemClock.elapsedRealtimeNanos() / 1000));
+                    case "configure" -> configure(command.getJSONObject("settings"), local ? streaming : true);
                     case "controls" -> controls(command.getJSONObject("settings"));
-                    case "stop" -> { stop(); bridge.send(Json.object("type", "stopped")); }
+                    case "stop" -> { if (current != null) configure(current, false); else stop(); send(state("stopped")); }
                     case "raw" -> raw();
                     default -> throw new IllegalArgumentException("Unknown command");
                 }
@@ -64,8 +117,8 @@ final class CameraController implements AutoCloseable {
     }
 
     void fail(Exception e) {
-        bridge.send(Json.object("type", "error", "message", e.getClass().getSimpleName() + ": " + e.getMessage()));
-        bridge.listener.status("Camera: " + e.getMessage());
+        send(Json.object("type", "error", "message", e.getClass().getSimpleName() + ": " + e.getMessage(),
+                "settings", current, "revision", revision, "streaming", session != null && streaming));
     }
 
     boolean highSpeed(JSONObject s, Catalog.Lens l) {
@@ -91,7 +144,7 @@ final class CameraController implements AutoCloseable {
         throw new IllegalArgumentException("Frame rate is unavailable for this resolution/lens");
     }
 
-    void validate(JSONObject s, Catalog.Lens l) throws Exception {
+    void validate(JSONObject s, Catalog.Lens l, boolean encode) throws Exception {
         var c = l.chars();
         Set<String> allowed = Set.of("camera", "codec", "width", "height", "fps", "bitrate", "manual", "iso", "exposureNs",
                 "focusAuto", "focus", "zoom", "ev", "awb", "ois", "stabilization", "torch", "aeLock", "awbLock", "gains",
@@ -117,6 +170,7 @@ final class CameraController implements AutoCloseable {
         if (!highSpeed(s, l) && duration > 0 && fps > 1_000_000_000.0 / duration + 0.01) throw new IllegalArgumentException("This resolution cannot sustain the requested frame rate");
         if (highSpeed(s, l) && (s.optBoolean("manual") || !s.optBoolean("focusAuto", true) || s.optInt("awb", 1) != 1))
             throw new IllegalArgumentException("High-speed sessions require automatic exposure, focus and white balance");
+        if (encode) {
         String name = s.getString("codec");
         JSONObject codec = null;
         JSONArray codecs = catalog.export().getJSONArray("codecs");
@@ -127,6 +181,7 @@ final class CameraController implements AutoCloseable {
         var caps = info.getCapabilitiesForType(codec.getString("mime")).getVideoCapabilities();
         if (!caps.areSizeAndRateSupported(encodedWidth, encodedHeight, fps)) throw new IllegalArgumentException("Codec does not support this output size/frame rate combination");
         Limits.checked("Bitrate", s.getInt("bitrate"), caps.getBitrateRange().getLower(), caps.getBitrateRange().getUpper());
+        }
         boolean manual = s.optBoolean("manual");
         if (manual) {
             if (!catalog.describe(l).getBoolean("manualSensor")) throw new IllegalArgumentException("Manual sensor controls are unavailable");
@@ -173,19 +228,32 @@ final class CameraController implements AutoCloseable {
         if (s.has(key) && s.optInt(key,-1) != -1 && !Catalog.mode(modes,s.optInt(key))) throw new IllegalArgumentException(key+" is not exposed by this camera");
     }
 
-    void configure(JSONObject settings) throws Exception {
+    void configure(JSONObject settings) throws Exception { configure(settings, streaming); }
+
+    void configure(JSONObject settings, boolean encode) throws Exception {
         Catalog.Lens selected = catalog.lenses.get(settings.getString("camera"));
         if (selected == null) throw new IllegalArgumentException("Camera ID is unavailable");
-        validate(settings, selected);
+        validate(settings, selected, encode);
+        if (preview == null && !encode) throw new IllegalStateException("Preview surface is unavailable");
+        if (preview != null) {
+            Size[] sizes = selected.chars().get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP).getOutputSizes(android.graphics.SurfaceTexture.class);
+            if (sizes == null || !Arrays.asList(sizes).contains(new Size(settings.getInt("width"), settings.getInt("height"))))
+                throw new IllegalArgumentException("This sensor mode cannot provide a local preview");
+        }
         stop();
         current = new JSONObject(settings.toString());
         lens = selected;
+        streaming = encode;
+        revision++;
         int epoch = generation;
         try {
         int sensorW = current.getInt("width"), sensorH = current.getInt("height"), fps = current.getInt("fps");
         int w = PhoneProcessor.outputWidth(current), h = PhoneProcessor.outputHeight(current);
+        if (previewTexture != null) previewTexture.setDefaultBufferSize(PhoneProcessor.needed(current) ? w : sensorW, PhoneProcessor.needed(current) ? h : sensorH);
+        String mime = "";
+        if (encode) {
         encoder = MediaCodec.createByCodecName(current.getString("codec"));
-        String mime = encoder.getCodecInfo().getSupportedTypes()[0];
+        mime = encoder.getCodecInfo().getSupportedTypes()[0];
         for (String type : encoder.getCodecInfo().getSupportedTypes()) if (type.equals("video/avc") || type.equals("video/hevc")) mime = type;
         MediaFormat format = MediaFormat.createVideoFormat(mime, w, h);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
@@ -199,10 +267,12 @@ final class CameraController implements AutoCloseable {
         encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         surface = encoder.createInputSurface();
         encoder.start();
+        }
         if (PhoneProcessor.needed(current)) {
-            processor = new PhoneProcessor(context,surface,sensorW,sensorH,w,h,current,
+            processor = new PhoneProcessor(context,encode ? surface : preview,sensorW,sensorH,w,h,current,
                     e -> handler.post(() -> { if (epoch == generation) { stop(); fail(e); } }));
         }
+        if (processor != null && encode && preview != null) processor.preview(preview);
         MediaCodec activeEncoder = encoder;
         String codecMime = mime;
         catalog.manager.openCamera(lens.openId(), new CameraDevice.StateCallback() {
@@ -210,20 +280,22 @@ final class CameraController implements AutoCloseable {
                 if (epoch != generation) { device.close(); return; }
                 camera = device;
                 try {
-                    OutputConfiguration output = new OutputConfiguration(processor == null ? surface : processor.surface());
-                    if (lens.physicalId() != null) output.setPhysicalCameraId(lens.physicalId());
-                    camera.createCaptureSession(new SessionConfiguration(highSpeed(current, lens) ? SessionConfiguration.SESSION_HIGH_SPEED : SessionConfiguration.SESSION_REGULAR, List.of(output),
+                    List<OutputConfiguration> outputs = new ArrayList<>();
+                    Surface capture = processor != null ? processor.surface() : encode ? surface : preview;
+                    outputs.add(new OutputConfiguration(capture));
+                    if (processor == null && encode && preview != null) outputs.add(new OutputConfiguration(preview));
+                    for (OutputConfiguration output : outputs) if (lens.physicalId() != null) output.setPhysicalCameraId(lens.physicalId());
+                    camera.createCaptureSession(new SessionConfiguration(highSpeed(current, lens) ? SessionConfiguration.SESSION_HIGH_SPEED : SessionConfiguration.SESSION_REGULAR, outputs,
                             handler::post, new CameraCaptureSession.StateCallback() {
                         @Override public void onConfigured(CameraCaptureSession value) {
                             if (epoch != generation) { value.close(); return; }
                             session = value;
                             try {
                                 applyControls();
-                                bridge.send(Json.object("type", "configured", "width", w, "height", h, "fps", fps, "mime", codecMime,
+                                send(Json.object("type", encode ? "configured" : "preview", "revision", revision, "streaming", encode, "origin", origin, "width", w, "height", h, "fps", fps, "mime", codecMime,
                                         "timestampsRealtime", Objects.equals(lens.chars().get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE), CameraMetadata.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME), "phoneProcessed",processor != null,"settings", current));
-                                bridge.send(processor == null ? Json.object("type","processing","mode","Camera → encoder") : processingStats());
-                                new Thread(() -> drain(activeEncoder, epoch), "opencam-encoder").start();
-                                bridge.listener.status("Streaming " + w + " × " + h + " · " + fps + " fps");
+                                send(processor == null ? Json.object("type","processing","mode","Camera → encoder") : processingStats());
+                                if (encode) new Thread(() -> drain(activeEncoder, epoch), "opencam-encoder").start();
                             } catch (Exception e) { stop(); fail(e); }
                         }
                         @Override public void onConfigureFailed(CameraCaptureSession value) {
@@ -247,15 +319,16 @@ final class CameraController implements AutoCloseable {
             if (streamKeys.contains(key)) throw new IllegalArgumentException("Stream changes require configure");
             merged.put(key, settings.get(key));
         }
-        validate(merged, lens);
-        if (PhoneProcessor.needed(merged) != (processor != null) || !merged.optString("mlDelegate","auto").equals(current.optString("mlDelegate","auto"))) {
+        validate(merged, lens, streaming);
+        if (session == null || PhoneProcessor.needed(merged) != (processor != null) || !merged.optString("mlDelegate","auto").equals(current.optString("mlDelegate","auto"))) {
             configure(merged); return;
         }
         JSONObject previous = current;
         current = merged;
         try { if (session != null) applyControls(); if (processor != null) processor.update(current); }
         catch (Exception e) { current = previous; throw e; }
-        bridge.send(Json.object("type", "controls", "settings", current));
+        revision++;
+        send(state("controls"));
     }
 
     <T> void set(CaptureRequest.Builder request, CaptureRequest.Key<T> key, T value) throws CameraAccessException {
@@ -311,7 +384,8 @@ final class CameraController implements AutoCloseable {
 
     void applyControls() throws Exception {
         CaptureRequest.Builder b = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
-        b.addTarget(processor == null ? surface : processor.surface());
+        b.addTarget(processor != null ? processor.surface() : streaming ? surface : preview);
+        if (processor == null && streaming && preview != null) b.addTarget(preview);
         fill(b);
         CameraCaptureSession.CaptureCallback callback = new CameraCaptureSession.CaptureCallback() {
             @Override public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest r, TotalCaptureResult result) {
@@ -334,8 +408,8 @@ final class CameraController implements AutoCloseable {
                         physical.put(entry.getKey(), values);
                     }
                     metadata.put("physicalCameras", physical);
-                    bridge.send(Json.object("type", "metadata", "values", metadata));
-                    if (processor != null) bridge.send(processingStats());
+                    send(Json.object("type", "metadata", "values", metadata));
+                    if (processor != null) send(processingStats());
                 } catch (Exception e) { fail(e); }
             }
         };
@@ -371,7 +445,7 @@ final class CameraController implements AutoCloseable {
                         buffer.position(info.offset); buffer.limit(info.offset + info.size);
                         byte[] data = new byte[info.size]; buffer.get(data);
                         if ((info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) config = data;
-                        else bridge.video(data, info.presentationTimeUs, info.flags, config);
+                        else { Bridge active = bridge; if (active != null) active.video(data, info.presentationTimeUs, info.flags, config); }
                     }
                     codec.releaseOutputBuffer(index, false);
                 }
@@ -404,7 +478,7 @@ final class CameraController implements AutoCloseable {
             rawImage = image;
             saveRaw(epoch);
         }, handler);
-        bridge.send(Json.object("type", "stopped", "message", "RAW capture pauses the stream; start again when complete"));
+        send(Json.object("type", "stopped", "message", "RAW capture pauses the stream; start again when complete"));
         catalog.manager.openCamera(lens.openId(), new CameraDevice.StateCallback() {
             @Override public void onOpened(CameraDevice device) {
                 if (epoch != generation) { device.close(); return; }
@@ -458,7 +532,7 @@ final class CameraController implements AutoCloseable {
             }
             values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0);
             context.getContentResolver().update(uri, values, null, null);
-            bridge.send(Json.object("type", "raw_saved", "uri", uri.toString(), "message", "DNG saved to DCIM/OpenCam on your phone"));
+            send(Json.object("type", "raw_saved", "uri", uri.toString(), "message", "DNG saved to DCIM/OpenCam on your phone"));
         } catch (Exception e) {
             if (uri != null) context.getContentResolver().delete(uri, null, null);
             fail(e);
@@ -467,7 +541,7 @@ final class CameraController implements AutoCloseable {
 
     void stop() {
         generation++;
-        bridge.resetVideo();
+        Bridge active = bridge; if (active != null) active.resetVideo();
         if (session != null) { session.close(); session = null; }
         if (camera != null) { camera.close(); camera = null; }
         if (processor != null) { processor.close(); processor = null; }
@@ -481,5 +555,5 @@ final class CameraController implements AutoCloseable {
         if (rawReader != null) { rawReader.close(); rawReader = null; }
     }
 
-    @Override public void close() { handler.post(() -> { stop(); thread.quitSafely(); }); }
+    @Override public void close() { handler.post(() -> { stop(); if (preview != null) { preview.release(); preview = null; } thread.quitSafely(); }); }
 }
