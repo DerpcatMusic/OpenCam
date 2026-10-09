@@ -16,7 +16,7 @@ public final class ProcessingTest extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
-            checkShaders(); checkModel(); checkValidation(); checkSettings(); checkPixelPacking(); checkCameraSync();
+            checkShaders(); checkModel(); checkValidation(); checkSettings(); checkPixelPacking(); checkPreviewTransform(); checkCameraSync();
             result.putString("stream","GLES3 encoder/preview parity, blur, segmentation, native lens switching, phone/desktop sync, revisions and validation passed");
             result.putString("checks",checks.toString());
             finish(Activity.RESULT_OK,result);
@@ -126,6 +126,22 @@ public final class ProcessingTest extends Instrumentation {
         boolean rejected=false;try{WirePixels.plane(padded,5,2,3,3,1,new byte[9],0);}catch(IllegalArgumentException expected){rejected=true;}require(rejected,"Invalid camera plane accepted");
         require(WirePixels.bytes(1280,720,false)==1382400 && WirePixels.bytes(1280,720,true)==3686400,"Uncompressed allocation differs from wire format");
     }
+    void checkPreviewTransform() throws Exception {
+        int[][] cases = {{360,640,1280,720,90,0,0,360,640}, {360,640,1280,720,270,0,0,360,640},
+            {800,600,1280,720,90,90,0,800,450}, {800,600,1280,720,270,270,0,800,450},
+            {360,640,1280,720,90,180,0,360,640}, {800,600,1280,720,0,0,0,800,450},
+            {360,640,960,720,90,0,1,360,270}, {800,600,960,720,90,90,1,450,600}};
+        for (int[] c : cases) {
+            Matrix matrix = MainActivity.previewMatrix(c[0],c[1],c[2],c[3],c[4],c[5],c[6] != 0);
+            RectF bounds = new RectF(0,0,c[0],c[1]); matrix.mapRect(bounds);
+            require(Math.abs(bounds.width()-c[7]) < .01 && Math.abs(bounds.height()-c[8]) < .01, "Preview aspect ratio changed: " + bounds);
+            require(Math.abs(bounds.centerX()-c[0]/2f) < .01 && Math.abs(bounds.centerY()-c[1]/2f) < .01, "Preview is not centered");
+            float[] right = {1,0}; matrix.mapVectors(right);
+            require(Math.abs(right[0]*(float)Math.sin(Math.toRadians(c[5])) + right[1]*(float)Math.cos(Math.toRadians(c[5]))) < .01, "Preview display rotation differs");
+            require(right[0]*(float)Math.cos(Math.toRadians(c[5])) - right[1]*(float)Math.sin(Math.toRadians(c[5])) > 0, "Preview is upside down");
+        }
+        checks.put("previewOrientation",true);
+    }
     void await(java.util.function.BooleanSupplier condition, String failure) throws Exception {
         for (int i=0;i<200;i++) { if (condition.getAsBoolean()) return; Thread.sleep(25); }
         throw new AssertionError(failure);
@@ -135,6 +151,20 @@ public final class ProcessingTest extends Instrumentation {
         try {
             await(() -> activity.settings != null && activity.controller != null && activity.controller.session != null, "Native preview did not open");
             require(activity.controller.encoder == null, "Local preview must not run a video encoder");
+            runOnMainSync(() -> {
+                require(activity.bridge == null, "Preview permission must not enable the connection");
+                activity.enableAfterPermission = true; activity.resumed = false;
+                activity.onRequestPermissionsResult(1,new String[]{android.Manifest.permission.CAMERA},new int[]{android.content.pm.PackageManager.PERMISSION_GRANTED});
+                require(activity.bridge == null && activity.enableAfterPermission, "Permission action lost before resume");
+                Bundle saved = new Bundle(); activity.onSaveInstanceState(saved);
+                require(saved.getBoolean("enable-after-permission"), "Pending permission action was not saved");
+                activity.resumed = true; activity.resumeCamera();
+                require(activity.bridge != null && !activity.enableAfterPermission && activity.copy.isEnabled(), "Granted permission did not complete connection startup");
+                activity.disable(); activity.enableAfterPermission = true;
+                activity.onRequestPermissionsResult(1,new String[]{android.Manifest.permission.CAMERA},new int[]{android.content.pm.PackageManager.PERMISSION_DENIED});
+                require(activity.bridge == null && !activity.enableAfterPermission, "Denied permission retained connection intent");
+            });
+            checks.put("permissionConnectionResume",true);
             checkBridgeSync(activity);
             long first = activity.revision;
             int ev = activity.settings.optInt("ev");

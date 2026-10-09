@@ -29,7 +29,13 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
     volatile JSONObject settings, catalog;
     volatile long revision;
     int selectedTool = -1;
-    boolean resumed;
+    boolean resumed, enableAfterPermission;
+    JSONObject previewInfo;
+    final android.hardware.display.DisplayManager.DisplayListener displays = new android.hardware.display.DisplayManager.DisplayListener() {
+        public void onDisplayAdded(int id) { }
+        public void onDisplayRemoved(int id) { }
+        public void onDisplayChanged(int id) { if (preview.getDisplay() != null && preview.getDisplay().getDisplayId() == id) transform(); }
+    };
     final java.util.List<com.google.android.material.button.MaterialButton> tools = new ArrayList<>();
 
     @Override public void onCreate(Bundle state) {
@@ -46,6 +52,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         });
         panel = findViewById(R.id.panel);
         preview = findViewById(R.id.preview);
+        getSystemService(android.hardware.display.DisplayManager.class).registerDisplayListener(displays, new android.os.Handler(getMainLooper()));
         controls = new CameraControls(this, findViewById(R.id.camera_controls), this::apply, this::status,()->{CameraController active=controller;if(active!=null)active.local(Json.object("type","raw"));});
         LinearLayout rail = findViewById(R.id.tools);
         int[] icons = {R.drawable.ic_camera, R.drawable.ic_video, R.drawable.ic_settings, R.drawable.ic_effects, R.drawable.ic_wifi};
@@ -70,6 +77,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             public void handleOnBackPressed() { if (selectedTool >= 0) select(-1); else { setEnabled(false); getOnBackPressedDispatcher().onBackPressed(); } }
         });
         if (state != null && state.containsKey("camera-settings")) try { settings = new JSONObject(state.getString("camera-settings")); } catch (Exception ignored) { }
+        enableAfterPermission = state != null && state.getBoolean("enable-after-permission");
         status = findViewById(R.id.status);
         pairing = findViewById(R.id.pairing);
         protect = findViewById(R.id.protect);
@@ -91,8 +99,10 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         });
         start.setOnClickListener(v -> {
             if (bridge != null) disable();
-            else if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
+            else if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                enableAfterPermission = true;
                 requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
+            }
             else enable();
         });
         copy.setOnClickListener(v -> {
@@ -143,15 +153,16 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
 
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
-        if (request == 1 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) camera();
-        else status.setText("Camera permission is needed. Enable it in Android app settings, then try again.");
+        if (request != 1) return;
+        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) resumeCamera();
+        else { enableAfterPermission = false; status.setText("Camera permission is needed. Enable it in Android app settings, then try again."); }
     }
     @Override public void command(JSONObject command) { CameraController c = controller; if (c != null) c.command(command); }
     @Override public void disconnected() { CameraController c = controller; if (c != null) c.handler.post(() -> { try { if (c.current != null && c.streaming) c.configure(c.current, false); } catch (Exception e) { c.fail(e); } }); }
     @Override public void status(String value) { runOnUiThread(() -> { if (status != null) status.setText(value); }); }
     @Override public void onResume() {
         super.onResume(); resumed = true;
-        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) camera();
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) resumeCamera();
         else if (!getPreferences(MODE_PRIVATE).getBoolean("asked-camera", false)) {
             getPreferences(MODE_PRIVATE).edit().putBoolean("asked-camera", true).apply();
             requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
@@ -163,9 +174,15 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         disable(); super.onPause();
     }
     @Override public void onSaveInstanceState(Bundle out) {
+        out.putBoolean("enable-after-permission", enableAfterPermission);
         if (settings != null) out.putString("camera-settings", settings.toString()); super.onSaveInstanceState(out);
     }
 
+    void resumeCamera() {
+        if (!resumed) return;
+        camera();
+        if (enableAfterPermission) { enableAfterPermission = false; enable(); }
+    }
     void camera() {
         if (!resumed || controller != null) return;
         try {
@@ -181,6 +198,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             try {
                 if (event.optJSONObject("settings") != null) {
                     settings = event.getJSONObject("settings"); revision = event.optLong("revision", revision);
+                    if (event.optJSONObject("preview") != null) previewInfo = event.getJSONObject("preview");
                     controls.state(catalog, settings, selectedTool); transform();
                 }
                 switch (event.optString("type")) {
@@ -227,11 +245,18 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         if (panel.getLayoutParams().height != height) { panel.getLayoutParams().height = height; panel.requestLayout(); }
     }
     void transform() {
-        if (settings == null || preview.getWidth() == 0 || preview.getHeight() == 0) return;
-        float w = PhoneProcessor.outputWidth(settings), h = PhoneProcessor.outputHeight(settings);
-        float vw = preview.getWidth(), vh = preview.getHeight(), scale = Math.min(vw / w, vh / h);
-        android.graphics.Matrix matrix = new android.graphics.Matrix();
-        matrix.setScale(w * scale / vw, h * scale / vh, vw / 2, vh / 2); preview.setTransform(matrix);
+        if (previewInfo == null || previewInfo.optInt("width") <= 0 || previewInfo.optInt("height") <= 0 || preview.getDisplay() == null || preview.getWidth() == 0 || preview.getHeight() == 0) return;
+        preview.setTransform(previewMatrix(preview.getWidth(), preview.getHeight(), previewInfo.optInt("width"), previewInfo.optInt("height"),
+            previewInfo.optInt("orientation"), preview.getDisplay().getRotation() * 90, previewInfo.optBoolean("processed")));
     }
-    @Override public void onDestroy() { disable(); super.onDestroy(); }
+    static android.graphics.Matrix previewMatrix(float vw, float vh, float w, float h, int sensor, int display, boolean processed) {
+        // Camera2 already rotates direct TextureView buffers for the sensor; EGL output has explicit dimensions.
+        if (!processed && sensor % 180 != 0) { float swap = w; w = h; h = swap; }
+        float scale = display % 180 == 0 ? Math.min(vw / w, vh / h) : Math.min(vw / h, vh / w);
+        android.graphics.Matrix matrix = new android.graphics.Matrix();
+        matrix.setScale(w * scale / vw, h * scale / vh, vw / 2, vh / 2);
+        matrix.postRotate(-display, vw / 2, vh / 2);
+        return matrix;
+    }
+    @Override public void onDestroy() { getSystemService(android.hardware.display.DisplayManager.class).unregisterDisplayListener(displays); disable(); super.onDestroy(); }
 }

@@ -23,6 +23,7 @@ final class CameraController implements AutoCloseable {
     volatile Bridge bridge;
     final java.util.function.Consumer<JSONObject> observer;
     Surface preview;
+    int previewWidth, previewHeight;
     android.graphics.SurfaceTexture previewTexture;
     boolean streaming;
     long revision;
@@ -95,7 +96,8 @@ final class CameraController implements AutoCloseable {
     }
 
     JSONObject state(String type) {
-        return Json.object("type", type, "settings", current, "revision", revision, "streaming", streaming, "origin", origin);
+        return Json.object("type", type, "settings", current, "revision", revision, "streaming", streaming, "origin", origin,
+            "preview", Json.object("width", previewWidth, "height", previewHeight, "orientation", lens == null ? 0 : lens.chars().get(CameraCharacteristics.SENSOR_ORIENTATION), "processed", processor != null));
     }
 
     void local(JSONObject command) { command(command, true); }
@@ -307,6 +309,8 @@ final class CameraController implements AutoCloseable {
                     e -> handler.post(() -> { if (epoch == generation) { stop(); fail(e); } }));
         }
         if (processor != null && encode && preview != null) processor.preview(preview);
+        previewWidth = processor == null ? previewSize.getWidth() : w;
+        previewHeight = processor == null ? previewSize.getHeight() : h;
         MediaCodec activeEncoder = encoder;
         String codecMime = mime;
         catalog.manager.openCamera(lens.openId(), new CameraDevice.StateCallback() {
@@ -326,8 +330,8 @@ final class CameraController implements AutoCloseable {
                             session = value;
                             try {
                                 applyControls();
-                                send(Json.object("type", encode ? "configured" : "preview", "revision", revision, "streaming", encode, "origin", origin, "width", w, "height", h, "fps", fps, "mime", codecMime,
-                                        "timestampsRealtime", Objects.equals(lens.chars().get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE), CameraMetadata.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME), "phoneProcessed",processor != null,"settings", current));
+                                send(state(encode ? "configured" : "preview").put("width", w).put("height", h).put("fps", fps).put("mime", codecMime)
+                                    .put("timestampsRealtime", Objects.equals(lens.chars().get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE), CameraMetadata.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME)).put("phoneProcessed", processor != null));
                                 send(processor == null ? Json.object("type","processing","mode",pixels?"Camera → uncompressed":"Camera → encoder") : processingStats());
                                 if (compressed) new Thread(() -> drain(activeEncoder, epoch,stream,wireEpoch), "opencam-encoder").start();
                             } catch (Exception e) { stop(); fail(e); }
