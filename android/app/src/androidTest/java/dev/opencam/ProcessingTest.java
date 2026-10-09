@@ -209,12 +209,20 @@ public final class ProcessingTest extends Instrumentation {
             public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String auth) { }
             public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String auth) { }
         }}, null);
+        var heartbeats = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
         try (javax.net.ssl.SSLSocket socket = (javax.net.ssl.SSLSocket) tls.getSocketFactory().createSocket("127.0.0.1", Bridge.PORT)) {
             socket.setSoTimeout(5000); socket.startHandshake();
             require(Bridge.hex(java.security.MessageDigest.getInstance("SHA-256").digest(socket.getSession().getPeerCertificates()[0].getEncoded())).equals(activity.bridge.fingerprint), "Test peer pin mismatch");
             var output = new java.io.DataOutputStream(socket.getOutputStream()); var input = new java.io.DataInputStream(socket.getInputStream());
             write(output, Json.object("type", "hello", "protocol", 1, "token", activity.bridge.token));
             JSONObject catalog = event(input, "capabilities");
+            var pulse = heartbeats.scheduleAtFixedRate(() -> {
+                try { write(output, Json.object("type","ping","sent",0)); }
+                catch (Exception e) { throw new IllegalStateException("Test heartbeat failed",e); }
+            },0,500,java.util.concurrent.TimeUnit.MILLISECONDS);
+            Thread.sleep(4000);
+            require(activity.bridge.peer != null && activity.bridge.peer.alive,"Heartbeats did not keep the silent test reader paired");
+            checks.put("heartbeatKeepsPeerAlive",true);
             require(catalog.getJSONObject("settings").getString("camera").equals(activity.settings.getString("camera")), "Pairing discarded phone camera selection");
             Bridge.Peer peer=activity.bridge.peer;long oldEpoch=peer.videoEpoch;peer.resetVideo();
             peer.video(new byte[]{1},0,1,null,oldEpoch);peer.pixels(new byte[]{1},0,0,oldEpoch);
@@ -231,13 +239,16 @@ public final class ProcessingTest extends Instrumentation {
             require(stale.getBoolean("conflict") && stale.getJSONObject("settings").getInt("ev") == 0, "Stale wire command overwrote phone");
             checkUncompressed(activity,input,output,stale.getLong("revision"));
             checkRawTransfer(activity,input);
+            if (pulse.isDone()) pulse.get();
+            pulse.cancel(false); heartbeats.shutdown();
+            require(heartbeats.awaitTermination(2,java.util.concurrent.TimeUnit.SECONDS),"Test heartbeat did not stop before the idle check");
             write(output,Json.object("type","stop"));event(input,"stopped");
             boolean closed=false;
             try{while(true){input.readUnsignedByte();int length=input.readInt();require(length>=0 && length<=Bridge.MAX_PACKET,"Invalid idle packet");input.readFully(new byte[length]);}}
             catch(java.net.SocketTimeoutException e){throw new AssertionError("Idle peer did not expire",e);}
             catch(java.io.EOFException|java.net.SocketException expected){closed=true;}
             require(closed,"Idle peer remained paired");checks.put("idlePeerExpired",true);
-        } finally { runOnMainSync(activity::disable); }
+        } finally { heartbeats.shutdownNow(); runOnMainSync(activity::disable); }
         await(() -> activity.controller.session != null, "Disconnect did not restore local preview");
         checks.put("tlsControlSync", true);
     }
@@ -281,7 +292,7 @@ public final class ProcessingTest extends Instrumentation {
     }
     void write(java.io.DataOutputStream output, JSONObject command) throws Exception {
         byte[] bytes = command.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        output.writeByte(1); output.writeInt(bytes.length); output.write(bytes); output.flush();
+        synchronized (output) { output.writeByte(1); output.writeInt(bytes.length); output.write(bytes); output.flush(); }
     }
     JSONObject event(java.io.DataInputStream input, String type) throws Exception {
         for (int i=0;i<100;i++) {

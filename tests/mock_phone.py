@@ -246,6 +246,7 @@ class MockPhone:
 
 
 def smoke(binary):
+    binary = Path(binary).resolve(strict=True)
     phone = MockPhone()
     try:
         invalid = phone.link.replace(phone.pin, "00" * 32)

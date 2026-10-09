@@ -174,10 +174,10 @@ jobs:
             adb shell pm grant dev.opencam android.permission.CAMERA
             adb shell am instrument -w -r dev.opencam.test/dev.opencam.ProcessingTest > native-checks.txt
             cat native-checks.txt
-            rg 'INSTRUMENTATION_CODE: -1' native-checks.txt
-            rg '"tlsControlSync":true' native-checks.txt
-            rg '"rawDNGTransfer":true' native-checks.txt
-            rg '"encoderBypassed":true' native-checks.txt
+            grep -F 'INSTRUMENTATION_CODE: -1' native-checks.txt
+            grep -F '"tlsControlSync":true' native-checks.txt
+            grep -F '"rawDNGTransfer":true' native-checks.txt
+            grep -F '"encoderBypassed":true' native-checks.txt
       - uses: actions/upload-artifact@v4
         with:
           name: opencam-android
