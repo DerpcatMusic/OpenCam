@@ -24,19 +24,18 @@ final class CaptureSettings {
     }
 
     static JSONObject defaults(JSONObject catalog, JSONObject camera) throws Exception {
-        JSONArray sizes = camera.getJSONArray("sizes");
-        JSONArray size = null;
-        long best = Long.MAX_VALUE;
-        for (int i = 0; i < sizes.length(); i++) {
-            JSONArray candidate = sizes.getJSONArray(i);
-            if (fps(camera, candidate).isEmpty()) continue;
-            long distance = Math.abs(candidate.getInt(0) - 1280L) + Math.abs(candidate.getInt(1) - 720L);
-            if (distance < best) { best = distance; size = candidate; }
-        }
-        if (size == null) throw new IllegalArgumentException("This camera has no regular preview mode");
         JSONArray codecs = catalog.getJSONArray("codecs");
         JSONObject codec = codecs.optJSONObject(0);
         for (int i = 0; i < codecs.length(); i++) if (codecs.getJSONObject(i).getString("mime").equals("video/avc")) { codec = codecs.getJSONObject(i); break; }
+        camera=WirePixels.camera(camera,codec==null?"":codec.getString("name"));
+        JSONArray sizes = camera.getJSONArray("sizes"),size=null;
+        long best=Long.MAX_VALUE;
+        for(int i=0;i<sizes.length();i++) {
+            JSONArray candidate=sizes.getJSONArray(i);if(fps(camera,candidate).isEmpty())continue;
+            long distance=Math.abs(candidate.getInt(0)-1280L)+Math.abs(candidate.getInt(1)-720L);
+            if(distance<best){best=distance;size=candidate;}
+        }
+        if(size==null)throw new IllegalArgumentException("This camera has no regular preview mode");
         int rate = fps(camera, size).stream().min(Comparator.comparingInt(f -> Math.abs(f - 30))).orElseThrow();
         JSONArray iso = camera.optJSONArray("iso"), exposure = camera.optJSONArray("exposureNs");
         return Json.object("camera", camera.getString("id"), "width", size.getInt(0), "height", size.getInt(1), "fps", rate,

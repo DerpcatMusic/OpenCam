@@ -16,7 +16,7 @@ public final class ProcessingTest extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
-            checkShaders(); checkModel(); checkValidation(); checkSettings(); checkCameraSync();
+            checkShaders(); checkModel(); checkValidation(); checkSettings(); checkPixelPacking(); checkCameraSync();
             result.putString("stream","GLES3 encoder/preview parity, blur, segmentation, native lens switching, phone/desktop sync, revisions and validation passed");
             result.putString("checks",checks.toString());
             finish(Activity.RESULT_OK,result);
@@ -120,6 +120,12 @@ public final class ProcessingTest extends Instrumentation {
         require(CaptureSettings.stale(Json.object("baseRevision", 6), 7), "Stale desktop command accepted");
         require(!CaptureSettings.stale(Json.object("settings", new JSONObject()), 7), "Version 1 compatibility failed");
     }
+    void checkPixelPacking() {
+        byte[] out=new byte[4];java.nio.ByteBuffer padded=java.nio.ByteBuffer.wrap(new byte[]{9,1,8,2,7,6,3,5,4});padded.position(1);
+        WirePixels.plane(padded,5,2,2,2,1,out,0);require(java.util.Arrays.equals(out,new byte[]{1,2,3,4}),"Interleaved/padded sensor planes were corrupted");
+        boolean rejected=false;try{WirePixels.plane(padded,5,2,3,3,1,new byte[9],0);}catch(IllegalArgumentException expected){rejected=true;}require(rejected,"Invalid camera plane accepted");
+        require(WirePixels.bytes(1280,720,false)==1382400 && WirePixels.bytes(1280,720,true)==3686400,"Uncompressed allocation differs from wire format");
+    }
     void await(java.util.function.BooleanSupplier condition, String failure) throws Exception {
         for (int i=0;i<200;i++) { if (condition.getAsBoolean()) return; Thread.sleep(25); }
         throw new AssertionError(failure);
@@ -153,6 +159,13 @@ public final class ProcessingTest extends Instrumentation {
                 runOnMainSync(() -> activity.apply(selected, true));
                 await(() -> activity.settings.optString("camera").equals(selected.optString("camera")) && activity.controller.session != null, "Front/rear lens switch failed");
             }
+            long beforeFailure=activity.revision;
+            activity.controller.handler.post(()->{
+                try{activity.controller.beforeRaw=CaptureSettings.copy(activity.controller.current);}catch(Exception e){throw new IllegalStateException(e);}activity.controller.resumeRaw=false;
+                activity.controller.finishRaw(activity.controller.generation,new java.io.IOException("Synthetic RAW capture failure"));
+            });
+            await(()->activity.revision>beforeFailure && activity.controller.session!=null,"RAW failure did not restore camera preview");
+            checks.put("rawErrorPreviewRestored",true);
             checks.put("cameraSync", Json.object("localRevision", first, "remoteRevision", third, "staleRejected", true, "previewWithoutEncoder", true, "cameraPaths", cameras.length()));
         } finally { runOnMainSync(activity::finish); }
     }
@@ -173,6 +186,9 @@ public final class ProcessingTest extends Instrumentation {
             write(output, Json.object("type", "hello", "protocol", 1, "token", activity.bridge.token));
             JSONObject catalog = event(input, "capabilities");
             require(catalog.getJSONObject("settings").getString("camera").equals(activity.settings.getString("camera")), "Pairing discarded phone camera selection");
+            Bridge.Peer peer=activity.bridge.peer;long oldEpoch=peer.videoEpoch;peer.resetVideo();
+            peer.video(new byte[]{1},0,1,null,oldEpoch);peer.pixels(new byte[]{1},0,0,oldEpoch);
+            require(peer.encoded.isEmpty() && peer.pixels==null,"Canceled capture frame entered a new stream");
             long revision = catalog.getLong("revision");
             write(output, Json.object("type", "controls", "baseRevision", revision, "settings", Json.object("ev", 0)));
             JSONObject remote = event(input, "controls");
@@ -183,9 +199,55 @@ public final class ProcessingTest extends Instrumentation {
             write(output, Json.object("type", "controls", "baseRevision", revision, "settings", Json.object("ev", 1)));
             JSONObject stale = event(input, "state");
             require(stale.getBoolean("conflict") && stale.getJSONObject("settings").getInt("ev") == 0, "Stale wire command overwrote phone");
+            checkUncompressed(activity,input,output,stale.getLong("revision"));
+            checkRawTransfer(activity,input);
+            write(output,Json.object("type","stop"));event(input,"stopped");
+            boolean closed=false;
+            try{while(true){input.readUnsignedByte();int length=input.readInt();require(length>=0 && length<=Bridge.MAX_PACKET,"Invalid idle packet");input.readFully(new byte[length]);}}
+            catch(java.net.SocketTimeoutException e){throw new AssertionError("Idle peer did not expire",e);}
+            catch(java.io.EOFException|java.net.SocketException expected){closed=true;}
+            require(closed,"Idle peer remained paired");checks.put("idlePeerExpired",true);
         } finally { runOnMainSync(activity::disable); }
         await(() -> activity.controller.session != null, "Disconnect did not restore local preview");
         checks.put("tlsControlSync", true);
+    }
+    void checkUncompressed(MainActivity activity,java.io.DataInputStream input,java.io.DataOutputStream output,long revision) throws Exception {
+        JSONObject camera=null;org.json.JSONArray cameras=activity.catalog.getJSONArray("cameras");
+        for(int i=0;i<cameras.length();i++)if(cameras.getJSONObject(i).getString("id").equals(activity.settings.getString("camera")))camera=cameras.getJSONObject(i);
+        for(String codec:new String[]{WirePixels.YUV,WirePixels.RGBA}) {
+            JSONObject mode=WirePixels.camera(camera,codec),settings=CaptureSettings.copy(activity.settings);org.json.JSONArray size=mode.getJSONArray("sizes").getJSONArray(0);
+            for(int i=0;i<mode.getJSONArray("sizes").length();i++){org.json.JSONArray candidate=mode.getJSONArray("sizes").getJSONArray(i);if(candidate.getInt(0)==1280 && candidate.getInt(1)==720)size=candidate;}
+            int fps=CaptureSettings.fps(mode,size).stream().min(java.util.Comparator.comparingInt(f->Math.abs(f-30))).orElseThrow();
+            settings.put("codec",codec).put("width",size.getInt(0)).put("height",size.getInt(1)).put("fps",fps);
+            write(output,Json.object("type","configure","baseRevision",revision,"settings",settings));
+            JSONObject configured=event(input,"configured");revision=configured.getLong("revision");int expected=WirePixels.bytes(configured.getInt("width"),configured.getInt("height"),codec.equals(WirePixels.RGBA)),offset=0;long pts=-1;
+            for(int i=0;offset<expected && i<500;i++) {
+                int kind=input.readUnsignedByte(),length=input.readInt();require(length>0 && length<=Bridge.MAX_PACKET,"Invalid pixel packet");byte[] data=new byte[length];input.readFully(data);
+                if(kind==1){JSONObject e=new JSONObject(new String(data,java.nio.charset.StandardCharsets.UTF_8));if(e.optString("type").equals("error"))throw new AssertionError(e.toString());continue;}
+                require(kind==3 && length>20,"Unexpected uncompressed packet kind");java.nio.ByteBuffer packet=java.nio.ByteBuffer.wrap(data).order(java.nio.ByteOrder.BIG_ENDIAN);
+                long time=packet.getLong();int total=packet.getInt(),position=packet.getInt();packet.getInt();if(position==0){offset=0;pts=time;}
+                require(time==pts && position==offset && total==expected,"Uncompressed chunks were not contiguous");offset+=length-20;
+            }
+            require(offset==expected && activity.controller.encoder==null,"Uncompressed stream did not bypass encoder");
+            write(output,Json.object("type","ping","sent",42));require(event(input,"pong").getInt("sent")==42,"Video blocked heartbeat");
+            checks.put(codec,Json.object("frameBytes",expected,"encoderBypassed",true,"heartbeatDuringVideo",true));
+        }
+    }
+    void checkRawTransfer(MainActivity activity,java.io.DataInputStream input) throws Exception {
+        android.content.ContentValues values=new android.content.ContentValues();values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,"OpenCam-transfer-fixture.dng");values.put(android.provider.MediaStore.Images.Media.MIME_TYPE,"image/x-adobe-dng");
+        android.net.Uri uri=activity.getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);require(uri!=null,"RAW transfer fixture unavailable");
+        try {
+            byte[] expected=new byte[100003];for(int i=0;i<expected.length;i++)expected[i]=(byte)(i*13);
+            try(java.io.OutputStream file=activity.getContentResolver().openOutputStream(uri)){file.write(expected);}
+            activity.bridge.raw(uri);JSONObject begin=event(input,"raw_file_begin");byte[] id=Auth.unhex(begin.getString("id"),16);java.io.ByteArrayOutputStream received=new java.io.ByteArrayOutputStream();JSONObject end=null;
+            for(int i=0;i<500 && end==null;i++){
+                int kind=input.readUnsignedByte(),size=input.readInt();require(size>0 && size<=Bridge.MAX_PACKET,"Invalid transfer packet");byte[] data=new byte[size];input.readFully(data);
+                if(kind==4){java.nio.ByteBuffer packet=java.nio.ByteBuffer.wrap(data).order(java.nio.ByteOrder.BIG_ENDIAN);byte[] transfer=new byte[16];packet.get(transfer);long offset=packet.getLong();require(java.util.Arrays.equals(transfer,id)&&offset==received.size(),"RAW transfer order mismatch");received.write(data,24,size-24);}
+                else if(kind==1){JSONObject e=new JSONObject(new String(data,java.nio.charset.StandardCharsets.UTF_8));if(e.optString("type").equals("raw_file_end"))end=e;}
+            }
+            require(end!=null && java.util.Arrays.equals(expected,received.toByteArray()),"RAW file transfer lost bytes");require(end.getString("sha256").equals(Bridge.hex(java.security.MessageDigest.getInstance("SHA-256").digest(expected))),"RAW transfer checksum mismatch");
+            checks.put("rawDNGTransfer",true);
+        } finally {activity.getContentResolver().delete(uri,null,null);}
     }
     void write(java.io.DataOutputStream output, JSONObject command) throws Exception {
         byte[] bytes = command.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);

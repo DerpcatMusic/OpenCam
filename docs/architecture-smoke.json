@@ -1,0 +1,126 @@
+{
+  "syntheticInput": true,
+  "hardwarePerformanceClaim": false,
+  "rustTests": {
+    "desktop": 24,
+    "probe": 21
+  },
+  "transportBenchmark": {
+    "results": [
+      {
+        "codec": "fixture.avc",
+        "label": "H.264",
+        "decoded_fps": 26.948430341085853,
+        "mbps": 1.8043311553973906,
+        "estimated_age_ms": 0.9047842404161103,
+        "error": null
+      },
+      {
+        "codec": "fixture.hevc",
+        "label": "HEVC",
+        "decoded_fps": 26.964698243102365,
+        "mbps": 0.7935371137485668,
+        "estimated_age_ms": 1.5684631367125343,
+        "error": null
+      },
+      {
+        "codec": "opencam.i420",
+        "label": "YUV420 \u00b7 uncompressed",
+        "decoded_fps": 26.99451227480185,
+        "mbps": 74.66034226915596,
+        "estimated_age_ms": 2.307549158934639,
+        "error": null
+      },
+      {
+        "codec": "opencam.rgba",
+        "label": "RGBA \u00b7 uncompressed",
+        "decoded_fps": 26.99498596750339,
+        "mbps": 199.093420507531,
+        "estimated_age_ms": 3.7659145515274184,
+        "error": null
+      }
+    ],
+    "winner": {
+      "codec": "fixture.avc",
+      "label": "H.264",
+      "decoded_fps": 26.948430341085853,
+      "mbps": 1.8043311553973906,
+      "estimated_age_ms": 0.9047842404161103,
+      "error": null
+    },
+    "note": "Frame age is a clock-synchronized estimate, not glass-to-glass latency"
+  },
+  "authenticatedReconnectSeconds": 0.16384475999802817,
+  "fileIntegrity": true,
+  "android": {
+    "device": "sdk_gphone64_x86_64",
+    "syntheticInput": true,
+    "warpChangedPixels": 12879,
+    "outputWidth": 160,
+    "outputHeight": 120,
+    "gpu": {
+      "mode": "phone GPU",
+      "frameSubmitMs": 233.316091,
+      "frames": 4,
+      "ml": {
+        "delegate": "warming up",
+        "inferenceMs": 0,
+        "cpuMs": null,
+        "gpuMs": null,
+        "maskAgeMs": null
+      }
+    },
+    "segmentation": {
+      "delegate": "CPU",
+      "inferenceMs": 3.709378,
+      "cpuMs": 3.457426,
+      "gpuMs": null,
+      "maskAgeMs": 50
+    },
+    "opencam.i420": {
+      "frameBytes": 1382400,
+      "encoderBypassed": true,
+      "heartbeatDuringVideo": true
+    },
+    "opencam.rgba": {
+      "frameBytes": 3686400,
+      "encoderBypassed": true,
+      "heartbeatDuringVideo": true
+    },
+    "rawDNGTransfer": true,
+    "idlePeerExpired": true,
+    "tlsControlSync": true,
+    "rawErrorPreviewRestored": true,
+    "cameraSync": {
+      "localRevision": 6,
+      "remoteRevision": 8,
+      "staleRejected": true,
+      "previewWithoutEncoder": true,
+      "cameraPaths": 4
+    }
+  },
+  "nativeDesktop": {
+    "initialPhoneSelection": "fixture-front",
+    "fps": 27,
+    "phoneZoom": 2.25,
+    "phoneTorch": false,
+    "phoneISO": 320,
+    "nativeDesktopSync": true,
+    "rejectedControlStateRestored": true,
+    "nativeDesktopReconnected": true,
+    "reconfigureSeconds": 0.3004023569956189
+  },
+  "nativeAndroidRAW": {
+    "syntheticCamera": true,
+    "nativeRAW_SENSOR_DngCreator": true,
+    "downloadBytes": 5177892,
+    "checksumMatched": true,
+    "previewRestored": true,
+    "advertisedRawSizes": [
+      [
+        1856,
+        1392
+      ]
+    ]
+  }
+}

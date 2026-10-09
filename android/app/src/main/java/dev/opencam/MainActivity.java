@@ -46,7 +46,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         });
         panel = findViewById(R.id.panel);
         preview = findViewById(R.id.preview);
-        controls = new CameraControls(this, findViewById(R.id.camera_controls), this::apply, this::status);
+        controls = new CameraControls(this, findViewById(R.id.camera_controls), this::apply, this::status,()->{CameraController active=controller;if(active!=null)active.local(Json.object("type","raw"));});
         LinearLayout rail = findViewById(R.id.tools);
         int[] icons = {R.drawable.ic_camera, R.drawable.ic_video, R.drawable.ic_settings, R.drawable.ic_effects, R.drawable.ic_wifi};
         String[] labels = {"Camera and focus", "Resolution and frame rate", "Sensor controls", "Phone effects", "Connection"};
@@ -189,7 +189,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
                             (event.optBoolean("streaming") ? "Streaming" : "Local preview") + " · " + settings.optInt("width") + " × " + settings.optInt("height") + " · " + settings.optInt("fps") + " fps");
                     }
                     case "error" -> { status.setText(event.optString("message")); if (settings != null) controls.state(catalog, settings, selectedTool); }
-                    case "raw_saved" -> status.setText(event.optString("message"));
+                    case "raw_saved", "raw_transfer_error" -> status.setText(event.optString("message"));
                 }
                 sizePanel();
             } catch (Exception e) { status.setText(e.getMessage()); }

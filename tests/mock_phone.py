@@ -16,8 +16,13 @@ from pathlib import Path
 
 
 class MockPhone:
-    def __init__(self, password=None):
+    def __init__(self, password=None, uncompressed=False, drop_after=None):
         self.password = password
+        self.uncompressed = uncompressed
+        self.drop_after = drop_after
+        self.dropped_at = None
+        self.reconfigured_after_drop = None
+        self.configurations = 0
         self.directory = tempfile.TemporaryDirectory(prefix="opencam-fixture-")
         folder = Path(self.directory.name)
         self.cert, self.key = folder / "cert.pem", folder / "key.pem"
@@ -51,6 +56,10 @@ class MockPhone:
                   "characteristics": {"fixture": True}}
         codecs = [{"name": "fixture.avc", "label": "H.264", "mime": "video/avc", "bitrate": [100000, 50000000]},
                   {"name": "fixture.hevc", "label": "HEVC", "mime": "video/hevc", "bitrate": [100000, 50000000]}]
+        if self.uncompressed:
+            camera.update(yuvSizes=camera["sizes"], rgbaSizes=camera["sizes"], raw=True, rawSizes=[[640,360]])
+            codecs += [{"name":"opencam.i420","label":"YUV420 · uncompressed","mime":"video/x-opencam-i420"},
+                       {"name":"opencam.rgba","label":"RGBA · uncompressed","mime":"video/x-opencam-rgba"}]
         return {"type": "capabilities", "protocol": 1, "device": "Protocol fixture · synthetic video", "cameras": [camera], "codecs": codecs}
 
     @staticmethod
@@ -66,6 +75,11 @@ class MockPhone:
     @staticmethod
     def units(settings):
         w, h, fps = settings["width"], settings["height"], settings["fps"]
+        if settings["codec"] in ("opencam.i420", "opencam.rgba"):
+            pixel_format = "rgba" if settings["codec"] == "opencam.rgba" else "yuv420p"
+            frame = subprocess.run(["ffmpeg","-hide_banner","-loglevel","error","-f","lavfi","-i",f"testsrc2=size={w}x{h}","-frames:v","1","-threads","1","-pix_fmt",pixel_format,"-f","rawvideo","pipe:1"],check=True,capture_output=True,timeout=15).stdout
+            assert len(frame) == w*h*(4 if pixel_format=="rgba" else 1.5)
+            return [frame]
         hevc = "hevc" in settings["codec"]
         command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", f"testsrc2=size={w}x{h}:rate={fps}",
                    "-frames:v", str(fps * 2), "-c:v", "libx265" if hevc else "libx264", "-preset", "ultrafast"]
@@ -134,8 +148,9 @@ class MockPhone:
                 frames = self.units(config)
                 if epoch[0] != generation:
                     return
+                uncompressed = config["codec"] in ("opencam.i420", "opencam.rgba")
                 event({"type": "configured", "width": config.get("outputWidth",0) or (config["height"] if config.get("phoneRotation",0)%180 else config["width"]), "height": config.get("outputHeight",0) or (config["width"] if config.get("phoneRotation",0)%180 else config["height"]), "phoneProcessed":True,
-                       "fps": config["fps"], "mime": "video/hevc" if "hevc" in config["codec"] else "video/avc", "timestampsRealtime": True, "settings": config}, generation)
+                       "fps": config["fps"], "mime": ("video/x-opencam-rgba" if config["codec"]=="opencam.rgba" else "video/x-opencam-i420") if uncompressed else ("video/hevc" if "hevc" in config["codec"] else "video/avc"), "timestampsRealtime": True, "settings": config}, generation)
                 start = time.monotonic()
                 index = 0
                 applied = tuple(config.get(k) for k in ("zoom","torch","ev","manual","iso","stretchX","stretchY","distortion","bulge"))
@@ -149,7 +164,15 @@ class MockPhone:
                         start = time.monotonic()
                     pts = int(time.monotonic() * 1e6)
                     flags = 1 if index % config["fps"] == 0 else 0
-                    if not send(2, struct.pack(">QI", pts, flags) + frames[index % len(frames)], generation):
+                    if self.drop_after is not None and self.dropped_at is None and time.monotonic()-start >= self.drop_after:
+                        self.dropped_at = time.monotonic()
+                        connection.shutdown(socket.SHUT_RDWR)
+                        break
+                    if uncompressed:
+                        frame = frames[index % len(frames)]
+                        for offset in range(0,len(frame),65536):
+                            if not send(3,struct.pack(">QIII",pts,len(frame),offset,0x10c10000)+frame[offset:offset+65536],generation): break
+                    elif not send(2, struct.pack(">QI", pts, flags) + frames[index % len(frames)], generation):
                         break
                     index += 1
                     time.sleep(max(0, start + index / config["fps"] - time.monotonic()))
@@ -188,6 +211,9 @@ class MockPhone:
                 elif operation == "configure":
                     with lock:
                         epoch[0] += 1
+                    self.configurations += 1
+                    if self.dropped_at is not None and self.reconfigured_after_drop is None:
+                        self.reconfigured_after_drop = time.monotonic()-self.dropped_at
                     settings = command["settings"].copy()
                     threading.Thread(target=video, args=(settings.copy(), epoch[0]), daemon=True).start()
                 elif operation == "controls":
@@ -195,6 +221,12 @@ class MockPhone:
                     event({"type": "controls", "settings": settings})
                     event({"type":"metadata","values":{"android.control.zoomRatio":settings.get("zoom",1),
                         "android.sensor.sensitivity":settings.get("iso",100),"android.sensor.exposureTime":settings.get("exposureNs",16666667)}})
+                elif operation == "raw" and self.uncompressed:
+                    data = b"II*\0" + bytes(range(256))*401
+                    transfer = secrets.token_bytes(16)
+                    event({"type":"raw_file_begin","id":transfer.hex(),"bytes":len(data),"format":"dng"})
+                    for offset in range(0,len(data),65536): send(4,transfer+struct.pack(">Q",offset)+data[offset:offset+65536])
+                    event({"type":"raw_file_end","id":transfer.hex(),"sha256":hashlib.sha256(data).hexdigest()})
                 elif operation == "stop":
                     epoch[0] += 1
                     event({"type": "stopped"})
@@ -258,7 +290,25 @@ def smoke(binary):
             permitted = subprocess.run([str(binary),"--pair",protected.link,"--seconds","2","--password-stdin"],input="fixture-password\n",capture_output=True,text=True,timeout=30)
             assert permitted.returncode == 0 and json.loads(permitted.stdout)["decodedFrames"] >= 40, permitted.stderr
         finally: protected.close()
-        print(json.dumps({"test": "synthetic protocol/decoder integration", "stream": report, "benchmark": benchmark, "formats": formats, "passwordGate": "missing/wrong denied before capabilities; correct accepted"}, indent=2))
+        pixels = MockPhone(uncompressed=True,drop_after=.3)
+        uncompressed = []
+        try:
+            for codec in ("opencam.i420","opencam.rgba"):
+                run=subprocess.run([str(binary),"--pair",pixels.link,"--codec",codec,"--size","640x360","--fps","27","--seconds","2","--raw"],cwd=pixels.directory.name,capture_output=True,text=True,timeout=20)
+                assert run.returncode==0,run.stderr
+                result=json.loads(run.stdout)
+                assert result["configured"]["settings"]["codec"]==codec and result["decodedFrames"]>=40 and result["lastFrame"][:2]==[640,360],result
+                saved=Path(pixels.directory.name)/result["rawFile"]
+                assert saved.read_bytes()==b"II*\0"+bytes(range(256))*401
+                saved.unlink()
+                uncompressed.append(result)
+            run=subprocess.run([str(binary),"--pair",pixels.link,"--benchmark","--size","640x360","--fps","27"],capture_output=True,text=True,timeout=60)
+            assert run.returncode==0,run.stderr
+            all_formats=json.loads(run.stdout)
+            assert len(all_formats["results"])==4 and all(r["decoded_fps"]>=24 for r in all_formats["results"]) and all_formats["winner"] is not None,all_formats
+            assert pixels.configurations>=3 and pixels.reconfigured_after_drop is not None and pixels.reconfigured_after_drop<2,pixels.reconfigured_after_drop
+        finally: pixels.close()
+        print(json.dumps({"uncompressed":uncompressed,"allTransportFormatsBenchmark":all_formats,"authenticatedReconnectSeconds":pixels.reconfigured_after_drop,"rawFileIntegrity":True,"test": "synthetic protocol/decoder integration", "stream": report, "benchmark": benchmark, "formats": formats, "passwordGate": "missing/wrong denied before capabilities; correct accepted"}, indent=2))
     finally:
         phone.close()
 

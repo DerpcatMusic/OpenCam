@@ -26,6 +26,11 @@ final class CameraController implements AutoCloseable {
     android.graphics.SurfaceTexture previewTexture;
     boolean streaming;
     long revision;
+    ImageReader pixelReader;
+    HandlerThread pixelThread;
+    Handler pixelHandler;
+    JSONObject beforeRaw;
+    boolean resumeRaw;
     String origin = "phone";
     final HandlerThread thread = new HandlerThread("opencam-camera");
     final Handler handler;
@@ -110,6 +115,7 @@ final class CameraController implements AutoCloseable {
                     case "controls" -> controls(command.getJSONObject("settings"));
                     case "stop" -> { if (current != null) configure(current, false); else stop(); send(state("stopped")); }
                     case "raw" -> raw();
+                    case "keyframe" -> requestSync();
                     default -> throw new IllegalArgumentException("Unknown command");
                 }
             } catch (Exception e) { fail(e); }
@@ -124,7 +130,7 @@ final class CameraController implements AutoCloseable {
     boolean highSpeed(JSONObject s, Catalog.Lens l) {
         Range<Integer>[] regular = l.chars().get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
         int fps = s.optInt("fps");
-        return Arrays.stream(regular).noneMatch(r -> r.contains(fps));
+        return !WirePixels.uncompressed(s.optString("codec")) && Arrays.stream(regular).noneMatch(r -> r.contains(fps));
     }
 
     Range<Integer> fpsRange(JSONObject s, Catalog.Lens l) {
@@ -150,12 +156,16 @@ final class CameraController implements AutoCloseable {
                 "focusAuto", "focus", "zoom", "ev", "awb", "ois", "stabilization", "torch", "aeLock", "awbLock", "gains",
                 "outputWidth", "outputHeight", "outputMode", "phoneRotation", "phoneMirror", "stretchX", "stretchY",
                 "distortion", "bulge", "bulgeRadius", "bulgeX", "bulgeY", "backgroundBlur", "maskFps", "mlDelegate",
-                "noiseReduction", "edgeMode", "aberrationMode", "lensCorrection");
+                "noiseReduction", "edgeMode", "aberrationMode", "lensCorrection", "rawWidth", "rawHeight");
         for (Iterator<String> keys = s.keys(); keys.hasNext();) {
             if (!allowed.contains(keys.next())) throw new IllegalArgumentException("Unknown camera control");
         }
         int w = s.getInt("width"), h = s.getInt("height"), fps = s.getInt("fps");
-        if (!Arrays.asList(catalog.sizes(l)).contains(new Size(w, h))) throw new IllegalArgumentException("Resolution is not exposed by this lens");
+        if(s.optInt("rawWidth")>0 || s.optInt("rawHeight")>0) {
+            Size[] raw=l.chars().get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP).getOutputSizes(ImageFormat.RAW_SENSOR);
+            if(raw==null || !Arrays.asList(raw).contains(new Size(s.optInt("rawWidth"),s.optInt("rawHeight"))))throw new IllegalArgumentException("RAW resolution is not exposed by this sensor");
+        }
+        if (!Arrays.asList(catalog.sizes(l,s.optString("codec"))).contains(new Size(w, h))) throw new IllegalArgumentException("Resolution is not exposed by this lens");
         fpsRange(s, l);
         PhoneProcessor.Options.read(s);
         int encodedWidth = PhoneProcessor.outputWidth(s), encodedHeight = PhoneProcessor.outputHeight(s);
@@ -166,11 +176,16 @@ final class CameraController implements AutoCloseable {
             if (sizes == null || !Arrays.asList(sizes).contains(new Size(w,h))) throw new IllegalArgumentException("This sensor mode does not expose a GPU texture surface");
         }
         StreamConfigurationMap map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-        long duration = map.getOutputMinFrameDuration(MediaCodec.class, new Size(w, h));
+        long duration = Catalog.minFrameNs(map,s.optString("codec"),new Size(w,h));
         if (!highSpeed(s, l) && duration > 0 && fps > 1_000_000_000.0 / duration + 0.01) throw new IllegalArgumentException("This resolution cannot sustain the requested frame rate");
         if (highSpeed(s, l) && (s.optBoolean("manual") || !s.optBoolean("focusAuto", true) || s.optInt("awb", 1) != 1))
             throw new IllegalArgumentException("High-speed sessions require automatic exposure, focus and white balance");
-        if (encode) {
+        if (encode && WirePixels.uncompressed(s.optString("codec"))) {
+            boolean rgba=s.optString("codec").equals(WirePixels.RGBA);
+            WirePixels.bytes(rgba?encodedWidth:w,rgba?encodedHeight:h,rgba);
+            if (!rgba && PhoneProcessor.needed(s)) throw new IllegalArgumentException("YUV420 uses sensor ISP controls; use Desktop processing or RGBA for geometry and blur");
+        }
+        if (encode && !WirePixels.uncompressed(s.optString("codec"))) {
         String name = s.getString("codec");
         JSONObject codec = null;
         JSONArray codecs = catalog.export().getJSONArray("codecs");
@@ -211,7 +226,7 @@ final class CameraController implements AutoCloseable {
                 throw new IllegalArgumentException("Run an automatic white-balance preview on this lens before setting manual gains");
         }
         int ois = s.optBoolean("ois") ? CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON : CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF;
-        int stab = s.optBoolean("stabilization") ? CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON : CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+        int stab = stabilization(s,c);
         if (ois != 0 && !Catalog.mode(c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION), ois)) throw new IllegalArgumentException("OIS is unavailable");
         if (stab != 0 && !Catalog.mode(c.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES), stab)) throw new IllegalArgumentException("Video stabilization is unavailable");
         if (ois != 0 && stab != 0) throw new IllegalArgumentException("Use optical OR video stabilization");
@@ -232,13 +247,20 @@ final class CameraController implements AutoCloseable {
 
     void configure(JSONObject settings, boolean encode) throws Exception {
         Catalog.Lens selected = catalog.lenses.get(settings.getString("camera"));
+        boolean pixels=encode && WirePixels.uncompressed(settings.optString("codec")), rgba=pixels && settings.optString("codec").equals(WirePixels.RGBA);
+        boolean compressed=encode && !pixels;
         if (selected == null) throw new IllegalArgumentException("Camera ID is unavailable");
         validate(settings, selected, encode);
         if (preview == null && !encode) throw new IllegalStateException("Preview surface is unavailable");
-        if (preview != null) {
-            Size[] sizes = selected.chars().get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP).getOutputSizes(android.graphics.SurfaceTexture.class);
-            if (sizes == null || !Arrays.asList(sizes).contains(new Size(settings.getInt("width"), settings.getInt("height"))))
-                throw new IllegalArgumentException("This sensor mode cannot provide a local preview");
+        Size previewSize=new Size(settings.getInt("width"),settings.getInt("height"));
+        if(preview!=null) {
+            Size[] sizes=catalog.sizes(selected,WirePixels.RGBA);
+            if(!Arrays.asList(sizes).contains(previewSize)) {
+                if(!pixels || rgba || sizes.length==0)throw new IllegalArgumentException("This sensor mode cannot provide a local preview");
+                final double aspect=(double)previewSize.getWidth()/previewSize.getHeight();
+                previewSize=Arrays.stream(sizes).filter(size->size.getWidth()<=1920 && size.getHeight()<=1920)
+                    .min(Comparator.comparingDouble(size->Math.abs((double)size.getWidth()/size.getHeight()-aspect)*10000+Math.abs(size.getWidth()-1280))).orElse(sizes[0]);
+            }
         }
         stop();
         current = new JSONObject(settings.toString());
@@ -246,12 +268,24 @@ final class CameraController implements AutoCloseable {
         streaming = encode;
         revision++;
         int epoch = generation;
+        Bridge.Peer stream=bridge==null?null:bridge.peer;
+        long wireEpoch=stream==null?0:stream.videoEpoch;
         try {
         int sensorW = current.getInt("width"), sensorH = current.getInt("height"), fps = current.getInt("fps");
         int w = PhoneProcessor.outputWidth(current), h = PhoneProcessor.outputHeight(current);
-        if (previewTexture != null) previewTexture.setDefaultBufferSize(PhoneProcessor.needed(current) ? w : sensorW, PhoneProcessor.needed(current) ? h : sensorH);
+        if (previewTexture != null) previewTexture.setDefaultBufferSize(PhoneProcessor.needed(current) || rgba ? w : previewSize.getWidth(), PhoneProcessor.needed(current) || rgba ? h : previewSize.getHeight());
         String mime = "";
-        if (encode) {
+        if (pixels) {
+            if(pixelThread==null){pixelThread=new HandlerThread("opencam-pixels");pixelThread.start();pixelHandler=new Handler(pixelThread.getLooper());}
+            pixelReader=ImageReader.newInstance(rgba?w:sensorW,rgba?h:sensorH,rgba?android.graphics.PixelFormat.RGBA_8888:ImageFormat.YUV_420_888,3);
+            pixelReader.setOnImageAvailableListener(reader->{
+                try(android.media.Image image=reader.acquireLatestImage()) {
+                    if(image!=null && epoch==generation && stream!=null && stream.pixelsReady()) stream.pixels(WirePixels.pack(image,rgba),image.getTimestamp()/1000,Build.VERSION.SDK_INT>=33?image.getDataSpace():0,wireEpoch);
+                } catch(Exception e){handler.post(()->{if(epoch==generation)fail(e);});}
+            },pixelHandler);
+            mime=WirePixels.mime(current.optString("codec"));
+        }
+        if (compressed) {
         encoder = MediaCodec.createByCodecName(current.getString("codec"));
         mime = encoder.getCodecInfo().getSupportedTypes()[0];
         for (String type : encoder.getCodecInfo().getSupportedTypes()) if (type.equals("video/avc") || type.equals("video/hevc")) mime = type;
@@ -268,8 +302,8 @@ final class CameraController implements AutoCloseable {
         surface = encoder.createInputSurface();
         encoder.start();
         }
-        if (PhoneProcessor.needed(current)) {
-            processor = new PhoneProcessor(context,encode ? surface : preview,sensorW,sensorH,w,h,current,
+        if (PhoneProcessor.needed(current) || rgba) {
+            processor = new PhoneProcessor(context,pixels ? pixelReader.getSurface() : encode ? surface : preview,sensorW,sensorH,w,h,current,
                     e -> handler.post(() -> { if (epoch == generation) { stop(); fail(e); } }));
         }
         if (processor != null && encode && preview != null) processor.preview(preview);
@@ -281,7 +315,7 @@ final class CameraController implements AutoCloseable {
                 camera = device;
                 try {
                     List<OutputConfiguration> outputs = new ArrayList<>();
-                    Surface capture = processor != null ? processor.surface() : encode ? surface : preview;
+                    Surface capture = processor != null ? processor.surface() : pixels ? pixelReader.getSurface() : encode ? surface : preview;
                     outputs.add(new OutputConfiguration(capture));
                     if (processor == null && encode && preview != null) outputs.add(new OutputConfiguration(preview));
                     for (OutputConfiguration output : outputs) if (lens.physicalId() != null) output.setPhysicalCameraId(lens.physicalId());
@@ -294,8 +328,8 @@ final class CameraController implements AutoCloseable {
                                 applyControls();
                                 send(Json.object("type", encode ? "configured" : "preview", "revision", revision, "streaming", encode, "origin", origin, "width", w, "height", h, "fps", fps, "mime", codecMime,
                                         "timestampsRealtime", Objects.equals(lens.chars().get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE), CameraMetadata.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME), "phoneProcessed",processor != null,"settings", current));
-                                send(processor == null ? Json.object("type","processing","mode","Camera → encoder") : processingStats());
-                                if (encode) new Thread(() -> drain(activeEncoder, epoch), "opencam-encoder").start();
+                                send(processor == null ? Json.object("type","processing","mode",pixels?"Camera → uncompressed":"Camera → encoder") : processingStats());
+                                if (compressed) new Thread(() -> drain(activeEncoder, epoch,stream,wireEpoch), "opencam-encoder").start();
                             } catch (Exception e) { stop(); fail(e); }
                         }
                         @Override public void onConfigureFailed(CameraCaptureSession value) {
@@ -320,7 +354,7 @@ final class CameraController implements AutoCloseable {
             merged.put(key, settings.get(key));
         }
         validate(merged, lens, streaming);
-        if (session == null || PhoneProcessor.needed(merged) != (processor != null) || !merged.optString("mlDelegate","auto").equals(current.optString("mlDelegate","auto"))) {
+        if (session == null || (PhoneProcessor.needed(merged) || streaming && merged.optString("codec").equals(WirePixels.RGBA)) != (processor != null) || !merged.optString("mlDelegate","auto").equals(current.optString("mlDelegate","auto"))) {
             configure(merged); return;
         }
         JSONObject previous = current;
@@ -336,6 +370,11 @@ final class CameraController implements AutoCloseable {
         else if (catalog.manager.getCameraCharacteristics(lens.openId()).getAvailableCaptureRequestKeys().contains(key)) request.set(key, value);
     }
 
+    static int stabilization(JSONObject settings,CameraCharacteristics chars) {
+        if(!settings.optBoolean("stabilization"))return CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_OFF;
+        return Build.VERSION.SDK_INT>=33 && Catalog.mode(chars.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES),CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION)
+            ? CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION:CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON;
+    }
     void fill(CaptureRequest.Builder b) throws Exception {
         JSONObject s = current;
         var c = lens.chars();
@@ -347,7 +386,7 @@ final class CameraController implements AutoCloseable {
         if (manual) {
             set(b, CaptureRequest.SENSOR_SENSITIVITY, s.getInt("iso"));
             set(b, CaptureRequest.SENSOR_EXPOSURE_TIME, s.getLong("exposureNs"));
-            set(b, CaptureRequest.SENSOR_FRAME_DURATION, 1_000_000_000L / fps);
+            set(b, CaptureRequest.SENSOR_FRAME_DURATION, Math.max(s.getLong("exposureNs"),1_000_000_000L / fps));
         }
         set(b, CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, s.optInt("ev", 0));
         set(b, CaptureRequest.CONTROL_AE_LOCK, s.optBoolean("aeLock"));
@@ -374,7 +413,7 @@ final class CameraController implements AutoCloseable {
             set(b, CaptureRequest.SCALER_CROP_REGION, new Rect(rect.centerX() - w/2, rect.centerY() - h/2, rect.centerX() + w/2, rect.centerY() + h/2));
         }
         set(b, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, s.optBoolean("ois") ? CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON : CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF);
-        set(b, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, s.optBoolean("stabilization") ? CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON : CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_OFF);
+        set(b, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, stabilization(s,c));
         set(b, CaptureRequest.FLASH_MODE, s.optBoolean("torch") ? CameraMetadata.FLASH_MODE_TORCH : CameraMetadata.FLASH_MODE_OFF);
         if (s.optInt("noiseReduction",-1)>=0) set(b,CaptureRequest.NOISE_REDUCTION_MODE,s.optInt("noiseReduction"));
         if (s.optInt("edgeMode",-1)>=0) set(b,CaptureRequest.EDGE_MODE,s.optInt("edgeMode"));
@@ -384,7 +423,7 @@ final class CameraController implements AutoCloseable {
 
     void applyControls() throws Exception {
         CaptureRequest.Builder b = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
-        b.addTarget(processor != null ? processor.surface() : streaming ? surface : preview);
+        b.addTarget(processor != null ? processor.surface() : pixelReader != null ? pixelReader.getSurface() : streaming ? surface : preview);
         if (processor == null && streaming && preview != null) b.addTarget(preview);
         fill(b);
         CameraCaptureSession.CaptureCallback callback = new CameraCaptureSession.CaptureCallback() {
@@ -423,7 +462,7 @@ final class CameraController implements AutoCloseable {
         return stats;
     }
 
-    void drain(MediaCodec codec, int epoch) {
+    void drain(MediaCodec codec, int epoch,Bridge.Peer stream,long wireEpoch) {
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         byte[] config = null;
         try {
@@ -445,7 +484,7 @@ final class CameraController implements AutoCloseable {
                         buffer.position(info.offset); buffer.limit(info.offset + info.size);
                         byte[] data = new byte[info.size]; buffer.get(data);
                         if ((info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) config = data;
-                        else { Bridge active = bridge; if (active != null) active.video(data, info.presentationTimeUs, info.flags, config); }
+                        else if(stream!=null) stream.video(data,info.presentationTimeUs,info.flags,config,wireEpoch);
                     }
                     codec.releaseOutputBuffer(index, false);
                 }
@@ -463,22 +502,24 @@ final class CameraController implements AutoCloseable {
         if (current == null || lens == null) throw new IllegalStateException("Select a lens and start the stream first");
         if (!Catalog.has(lens.chars(), CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_RAW)) throw new IllegalArgumentException("RAW_SENSOR is unavailable for this lens");
         if (Build.VERSION.SDK_INT < 29) throw new IllegalArgumentException("RAW saving requires Android 10 or later");
-        stop();
         var regular = lens.chars().get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
-        current.put("fps", Limits.previewFps(Arrays.stream(regular).map(r -> new int[]{r.getLower(), r.getUpper()}).toArray(int[][]::new)));
-        int epoch = generation;
         Size[] sizes = lens.chars().get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP).getOutputSizes(ImageFormat.RAW_SENSOR);
         if (sizes == null || sizes.length == 0) throw new IllegalArgumentException("No RAW sizes exposed");
-        Size size = Arrays.stream(sizes).max(Comparator.comparingLong(s -> (long) s.getWidth() * s.getHeight())).orElseThrow();
+        Size size=current.optInt("rawWidth")>0?new Size(current.optInt("rawWidth"),current.optInt("rawHeight")):Arrays.stream(sizes).max(Comparator.comparingLong(s -> (long) s.getWidth() * s.getHeight())).orElseThrow();
+        if(!Arrays.asList(sizes).contains(size))throw new IllegalArgumentException("RAW resolution is unavailable");
+        JSONObject restore=CaptureSettings.copy(current); boolean encode=streaming;
+        stop();beforeRaw=restore;resumeRaw=encode;int epoch=generation;
+        try {
+        current.put("fps", Limits.previewFps(Arrays.stream(regular).map(r -> new int[]{r.getLower(), r.getUpper()}).toArray(int[][]::new)));
         rawReader = ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.RAW_SENSOR, 2);
         rawReader.setOnImageAvailableListener(reader -> {
+            if (epoch != generation) return;
             android.media.Image image = reader.acquireNextImage();
-            if (epoch != generation) { if (image != null) image.close(); return; }
             if (rawImage != null) rawImage.close();
             rawImage = image;
             saveRaw(epoch);
         }, handler);
-        send(Json.object("type", "stopped", "message", "RAW capture pauses the stream; start again when complete"));
+        send(Json.object("type", "stopped", "message", "RAW capture pauses video briefly; capture resumes automatically"));
         catalog.manager.openCamera(lens.openId(), new CameraDevice.StateCallback() {
             @Override public void onOpened(CameraDevice device) {
                 if (epoch != generation) { device.close(); return; }
@@ -494,19 +535,28 @@ final class CameraController implements AutoCloseable {
                                 CaptureRequest.Builder b = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
                                 fill(b); b.addTarget(rawReader.getSurface());
                                 session.capture(b.build(), new CameraCaptureSession.CaptureCallback() {
-                                    @Override public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest r, TotalCaptureResult result) { rawResult = result; saveRaw(epoch); }
-                                    @Override public void onCaptureFailed(CameraCaptureSession s, CaptureRequest r, CaptureFailure failure) { stop(); fail(new IOException("RAW capture failed")); }
+                                    @Override public void onCaptureCompleted(CameraCaptureSession s, CaptureRequest r, TotalCaptureResult result) { if(epoch!=generation)return;rawResult = result; saveRaw(epoch); }
+                                    @Override public void onCaptureFailed(CameraCaptureSession s, CaptureRequest r, CaptureFailure failure) { finishRaw(epoch,new IOException("RAW capture failed")); }
                                 }, handler);
-                                handler.postDelayed(() -> { if (epoch == generation) { stop(); fail(new IOException("RAW capture timed out")); } }, 15_000);
-                            } catch (Exception e) { stop(); fail(e); }
+                                handler.postDelayed(() -> { if (epoch == generation) { finishRaw(epoch,new IOException("RAW capture timed out")); } }, 15_000);
+                            } catch (Exception e) { finishRaw(epoch,e); }
                         }
-                        @Override public void onConfigureFailed(CameraCaptureSession value) { if (epoch == generation) { stop(); fail(new IOException("This camera rejects RAW-only capture")); } }
+                        @Override public void onConfigureFailed(CameraCaptureSession value) { if (epoch == generation) { finishRaw(epoch,new IOException("This camera rejects RAW-only capture")); } }
                     }));
-                } catch (Exception e) { stop(); fail(e); }
+                } catch (Exception e) { finishRaw(epoch,e); }
             }
-            @Override public void onDisconnected(CameraDevice device) { device.close(); if (epoch == generation) stop(); }
-            @Override public void onError(CameraDevice device, int error) { device.close(); if (epoch == generation) { stop(); fail(new IOException("RAW camera failed: " + error)); } }
+            @Override public void onDisconnected(CameraDevice device) { device.close(); if (epoch == generation) finishRaw(epoch,new IOException("RAW camera disconnected")); }
+            @Override public void onError(CameraDevice device, int error) { device.close(); if (epoch == generation) { finishRaw(epoch,new IOException("RAW camera failed: " + error)); } }
         }, handler);
+        } catch(Exception e){finishRaw(epoch,e);}
+    }
+
+    void finishRaw(int epoch, Exception failure) {
+        if(epoch!=generation)return;
+        JSONObject restore=beforeRaw;beforeRaw=null;boolean encode=resumeRaw;
+        stop();
+        if(failure!=null)fail(failure);
+        if(restore!=null)try{configure(restore,encode);}catch(Exception e){fail(e);}
     }
 
     void saveRaw(int epoch) {
@@ -533,14 +583,18 @@ final class CameraController implements AutoCloseable {
             values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0);
             context.getContentResolver().update(uri, values, null, null);
             send(Json.object("type", "raw_saved", "uri", uri.toString(), "message", "DNG saved to DCIM/OpenCam on your phone"));
+            try{Bridge active=bridge;if(active!=null)active.raw(uri);}
+            catch(Exception e){send(Json.object("type","raw_transfer_error","message","DNG remains on your phone; transfer failed: "+e.getMessage()));}
         } catch (Exception e) {
             if (uri != null) context.getContentResolver().delete(uri, null, null);
             fail(e);
-        } finally { stop(); }
+        } finally {
+            finishRaw(epoch,null);
+        }
     }
 
     void stop() {
-        generation++;
+        beforeRaw=null;generation++;
         Bridge active = bridge; if (active != null) active.resetVideo();
         if (session != null) { session.close(); session = null; }
         if (camera != null) { camera.close(); camera = null; }
@@ -553,7 +607,8 @@ final class CameraController implements AutoCloseable {
         if (rawImage != null) { rawImage.close(); rawImage = null; }
         rawResult = null;
         if (rawReader != null) { rawReader.close(); rawReader = null; }
+        if(pixelReader!=null){ImageReader reader=pixelReader;pixelReader=null;pixelHandler.post(reader::close);}
     }
 
-    @Override public void close() { handler.post(() -> { stop(); if (preview != null) { preview.release(); preview = null; } thread.quitSafely(); }); }
+    @Override public void close() { handler.post(() -> { stop(); if (preview != null) { preview.release(); preview = null; } if(pixelThread!=null)pixelHandler.post(pixelThread::quitSafely); thread.quitSafely(); }); }
 }

@@ -3,6 +3,7 @@ mod auth;
 mod benchmark;
 mod discovery;
 mod frost;
+mod media;
 mod monitor;
 mod output;
 mod processing;
@@ -255,16 +256,17 @@ impl Studio {
         self.error = error;
     }
     fn connected(&self) -> bool {
-        self.session.is_some() && !self.catalog.is_null()
+        self.session.is_some() && !self.catalog.is_null() && !self.connecting
     }
     fn camera(&self) -> Value {
-        self.catalog["cameras"]
+        let camera = self.catalog["cameras"]
             .as_array()
             .into_iter()
             .flatten()
             .find(|c| c["id"] == self.settings["camera"])
             .cloned()
-            .unwrap_or(Value::Null)
+            .unwrap_or(Value::Null);
+        protocol::camera_mode(&camera, &self.settings["codec"])
     }
     fn send(&self, mut message: Value) {
         if matches!(message["type"].as_str(), Some("configure" | "controls")) {
@@ -639,6 +641,7 @@ impl Studio {
             }
             match event["type"].as_str() {
                 Some("capabilities") => {
+                    let reconnect = !self.catalog.is_null();
                     self.catalog = event;
                     let camera = self.catalog["cameras"]
                         .as_array()
@@ -650,9 +653,14 @@ impl Studio {
                         })
                         .cloned();
                     if let Some(camera) = camera {
-                        self.camera_select(camera);
+                        if !reconnect {
+                            self.camera_select(camera);
+                        }
                         let phone = self.catalog["settings"].clone();
                         self.merge_phone_settings(&phone);
+                        if self.settings["codec"] == "opencam.i420" {
+                            self.settings["processingLocation"] = json!("desktop");
+                        }
                         self.sync_phone_controls(window, cx);
                         self.format_inputs[0].update(cx, |state, cx| {
                             state.set_value(
@@ -704,6 +712,25 @@ impl Studio {
                 Some("metadata") => self.metadata = event["values"].clone(),
                 Some("processing") if self.settings["processingLocation"] != "desktop" => {
                     self.processing_report = event.clone()
+                }
+                Some("reconnecting") => {
+                    self.connecting = true;
+                    self.streaming = false;
+                    self.dirty = None;
+                    self.benchmark = None;
+                    self.message(
+                        format!("Reconnecting · attempt {}", event["attempt"]),
+                        false,
+                    );
+                }
+                Some("raw_transfer_error") => self.message(
+                    event["message"]
+                        .as_str()
+                        .unwrap_or("DNG transfer failed; file remains on phone"),
+                    true,
+                ),
+                Some("raw_downloaded") => {
+                    self.message(event["message"].as_str().unwrap_or("DNG downloaded"), false)
                 }
                 Some("raw_saved") => self.message(
                     event["message"].as_str().unwrap_or("RAW saved on phone"),

@@ -45,6 +45,9 @@ Camo documents wired/wireless Android and iOS capture; remote lens, focus, zoom,
 - Camera settings applied by one phone handler, acknowledged to both screens. Revisions reject stale commands. Pairing carries the phone's current selection instead of resetting it.
 - Desktop retains its independent processing settings when sensor controls arrive from the phone. Editing phone effects while desktop processing is active transfers effects to the phone to avoid two competing processing stages.
 
+- Optional uncompressed YUV420/RGBA transport, format-specific sensor sizes and timing limits; ordered, checksum-verified DNG still downloads with capture restoration.
+- Separate bounded network/decode/processing stages, control-priority chunking, keyframe recovery and automatic authenticated retries. Local synthetic tests exercise disconnection and resumption; no hardware latency advantage is inferred.
+
 ## What must be measured or built before superiority claims
 
 Use the same phone/lens, resolution, FPS, bitrate, codec, scene and network for all products. Measure glass-to-glass p50/p95 latency with a visible clock or LED, sustained decoded/output FPS, stalls/dropped frames, CPU/GPU use, thermal throttling, battery, reconnect and hours-long stability. Compare Wi-Fi, PC hotspot, desktop Ethernet and USB separately. Decoder age estimates and CI throughput are not glass-to-glass latency measurements.

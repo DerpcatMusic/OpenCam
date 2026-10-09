@@ -176,6 +176,8 @@ jobs:
             cat native-checks.txt
             rg 'INSTRUMENTATION_CODE: -1' native-checks.txt
             rg '"tlsControlSync":true' native-checks.txt
+            rg '"rawDNGTransfer":true' native-checks.txt
+            rg '"encoderBypassed":true' native-checks.txt
       - uses: actions/upload-artifact@v4
         with:
           name: opencam-android

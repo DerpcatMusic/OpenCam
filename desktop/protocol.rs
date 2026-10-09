@@ -74,11 +74,13 @@ pub fn certificate_matches(certificate: &[u8], expected: &[u8; 32]) -> bool {
 }
 
 pub fn write_json(writer: &mut impl Write, value: &Value) -> Result<()> {
-    let body = serde_json::to_vec(value)?;
-    ensure!(body.len() <= 65536, "Control packet is too large");
-    writer.write_all(&[1])?;
-    writer.write_all(&(body.len() as u32).to_be_bytes())?;
-    writer.write_all(&body)?;
+    let bytes = serde_json::to_vec(value)?;
+    ensure!(bytes.len() <= 65536, "Control message too large");
+    let mut packet = Vec::with_capacity(5 + bytes.len());
+    packet.push(1);
+    packet.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+    packet.extend(bytes);
+    writer.write_all(&packet)?;
     writer.flush()?;
     Ok(())
 }
@@ -98,7 +100,7 @@ impl Packets {
             let kind = header[0];
             let length = u32::from_be_bytes(header[1..5].try_into()?) as usize;
             ensure!(
-                matches!(kind, 1 | 2) && length > 0 && length <= MAX_PACKET,
+                matches!(kind, 1 | 2 | 3 | 4) && length > 0 && length <= MAX_PACKET,
                 "Invalid or oversized stream packet"
             );
             if self.buffer.len() - consumed < 5 + length {
@@ -143,7 +145,36 @@ pub fn normal_fps(camera: &Value, size: &Value) -> Vec<u64> {
     values
 }
 
+pub fn uncompressed(codec: &Value) -> bool {
+    matches!(codec.as_str(), Some("opencam.i420" | "opencam.rgba"))
+}
+pub fn camera_mode(camera: &Value, codec: &Value) -> Value {
+    let mut mode = camera.clone();
+    let prefix = match codec.as_str() {
+        Some("opencam.i420") => "yuv",
+        Some("opencam.rgba") => "rgba",
+        _ => return mode,
+    };
+    for (target, suffix) in [("sizes", "Sizes"), ("frameDurations", "FrameDurations")] {
+        if let Some(value) = camera.get(format!("{prefix}{suffix}")) {
+            mode[target] = value.clone();
+        }
+    }
+    mode["highSpeed"] = serde_json::json!([]);
+    mode
+}
+
 pub fn default_settings(catalog: &Value, camera: &Value) -> Result<Value> {
+    let codecs = catalog["codecs"]
+        .as_array()
+        .context("No hardware codecs advertised")?;
+    let codec = codecs
+        .iter()
+        .find(|c| c["mime"] == "video/avc")
+        .or_else(|| codecs.first())
+        .context("No hardware video encoder is exposed")?;
+    let mode = camera_mode(camera, &codec["name"]);
+    let camera = &mode;
     let sizes = camera["sizes"]
         .as_array()
         .context("Camera did not advertise encoding sizes")?;
@@ -155,14 +186,6 @@ pub fn default_settings(catalog: &Value, camera: &Value) -> Result<Value> {
         })
         .or_else(|| sizes.first())
         .context("This camera has no encoder outputs")?;
-    let codecs = catalog["codecs"]
-        .as_array()
-        .context("No hardware codecs advertised")?;
-    let codec = codecs
-        .iter()
-        .find(|c| c["mime"] == "video/avc")
-        .or_else(|| codecs.first())
-        .context("No hardware video encoder is exposed")?;
     let iso = camera["iso"][0]
         .as_i64()
         .unwrap_or(100)
@@ -196,6 +219,18 @@ pub fn default_settings(catalog: &Value, camera: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn uncompressed_modes_preserve_their_sensor_size_and_duration_limits() {
+        let camera = serde_json::json!({"sizes":[[1280,720]],"yuvSizes":[[4000,3000]],"yuvFrameDurations":[{"size":[4000,3000],"minFrameNs":100000000}],"fpsRanges":[[5,30]],"highSpeed":[{"size":[1280,720]}]});
+        let mode = camera_mode(&camera, &serde_json::json!("opencam.i420"));
+        assert_eq!(mode["sizes"][0], serde_json::json!([4000, 3000]));
+        assert_eq!(
+            normal_fps(&mode, &mode["sizes"][0]),
+            vec![5, 6, 7, 8, 9, 10]
+        );
+        assert_eq!(mode["highSpeed"], serde_json::json!([]));
+        assert_eq!(camera_mode(&camera, &serde_json::json!("avc")), camera);
+    }
     #[test]
     fn fps_choices_respect_resolution_duration_and_disjoint_ranges() {
         let camera = serde_json::json!({"fpsRanges":[[15,30],[60,60]],"frameDurations":[{"size":[3840,2160],"minFrameNs":66_666_666}]});

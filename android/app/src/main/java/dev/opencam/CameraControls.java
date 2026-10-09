@@ -15,6 +15,7 @@ import org.json.*;
 
 final class CameraControls {
     final Context context;
+    final Runnable raw;
     final LinearLayout root;
     final BiConsumer<JSONObject, Boolean> apply;
     final Consumer<String> error;
@@ -23,13 +24,13 @@ final class CameraControls {
     boolean binding;
     int tool;
 
-    CameraControls(Context context, LinearLayout root, BiConsumer<JSONObject, Boolean> apply, Consumer<String> error) {
-        this.context = context; this.root = root; this.apply = apply; this.error = error;
+    CameraControls(Context context, LinearLayout root, BiConsumer<JSONObject, Boolean> apply, Consumer<String> error,Runnable raw) {
+        this.context = context; this.root = root; this.apply = apply; this.error = error;this.raw=raw;
     }
     int dp(int value) { return Math.round(value * context.getResources().getDisplayMetrics().density); }
     void state(JSONObject catalog, JSONObject value, int tool) {
         boolean rebuild = this.catalog == null || this.tool != tool || !settings.optString("camera").equals(value.optString("camera"))
-                || tool == 1 && (settings.optInt("width") != value.optInt("width") || settings.optInt("height") != value.optInt("height"));
+                || !settings.optString("codec").equals(value.optString("codec")) || tool == 1 && (settings.optInt("width") != value.optInt("width") || settings.optInt("height") != value.optInt("height"));
         this.catalog = catalog; settings = value; this.tool = tool;
         if (rebuild) {
             root.removeAllViews(); bindings.clear(); camera = null;
@@ -40,6 +41,7 @@ final class CameraControls {
                     if (candidate.getString("id").equals(settings.getString("camera"))) camera = candidate;
                 }
                 if (camera == null) return;
+                camera=WirePixels.camera(camera,settings.optString("codec"));
                 switch (tool) { case 0 -> lenses(); case 1 -> format(); case 2 -> sensor(); case 3 -> effects(); }
             } catch (Exception e) { error.accept(e.getMessage()); }
         }
@@ -158,9 +160,27 @@ final class CameraControls {
         }
         editor("Frame rate · fps", rates, s -> Integer.toString(s.optInt("fps")), text -> patch(Json.object("fps", Integer.parseInt(text.trim())), true), InputType.TYPE_CLASS_NUMBER);
         List<String> labels = new ArrayList<>(); List<Object> codecs = new ArrayList<>(); JSONArray encoders = catalog.getJSONArray("codecs");
-        for (int i = 0; i < encoders.length(); i++) { JSONObject c = encoders.getJSONObject(i); labels.add(c.getString("label") + " · " + c.getString("name")); codecs.add(c.getString("name")); }
-        menu("Encoder", labels, codecs, s -> s.optString("codec"), codec -> patch(Json.object("codec", codec), true));
-        number("Bitrate · bit/s", "bitrate", 1, Integer.MAX_VALUE, true, true);
+        for (int i = 0; i < encoders.length(); i++) { JSONObject c = encoders.getJSONObject(i); labels.add(WirePixels.uncompressed(c.getString("name"))?c.getString("label"):c.getString("label") + " · " + c.getString("name")); codecs.add(c.getString("name")); }
+        menu("Transport format",labels,codecs,s->s.optString("codec"),codec->{
+            try {
+                JSONObject mode=WirePixels.camera(camera,codec.toString());JSONArray modes=mode.getJSONArray("sizes"),choiceSize=null;
+                for(int i=0;i<modes.length();i++)if(modes.getJSONArray(i).getInt(0)==settings.optInt("width") && modes.getJSONArray(i).getInt(1)==settings.optInt("height"))choiceSize=modes.getJSONArray(i);
+                if(choiceSize==null)choiceSize=modes.getJSONArray(0);
+                int fps=CaptureSettings.fps(mode,choiceSize).stream().min(Comparator.comparingInt(f->Math.abs(f-settings.optInt("fps",30)))).orElseThrow();
+                patch(Json.object("codec",codec,"width",choiceSize.getInt(0),"height",choiceSize.getInt(1),"fps",fps),true);
+            }catch(Exception e){error.accept(e.getMessage());}
+        });
+        if(!WirePixels.uncompressed(settings.optString("codec")))number("Bitrate · bit/s", "bitrate", 1, Integer.MAX_VALUE, true, true);
+        JSONArray raw=camera.optJSONArray("rawSizes");
+        if(camera.optBoolean("raw") && raw!=null && raw.length()>0) {
+            List<String> choices=new ArrayList<>();for(int i=0;i<raw.length();i++){JSONArray rawSize=raw.getJSONArray(i);choices.add(rawSize.getInt(0)+"x"+rawSize.getInt(1));}
+            choices.sort(Comparator.comparingLong(text->{String[] pair=text.split("x");return (long)Integer.parseInt(pair[0])*Integer.parseInt(pair[1]);}));
+            editor("RAW resolution",choices,s->s.optInt("rawWidth")>0?s.optInt("rawWidth")+"x"+s.optInt("rawHeight"):choices.get(choices.size()-1),text->{
+                String normalized=text.toLowerCase(Locale.US).replace('×','x').replace(" ","");if(!choices.contains(normalized))throw new IllegalArgumentException("Sensor does not expose this RAW resolution");
+                String[] pair=normalized.split("x");patch(Json.object("rawWidth",Integer.parseInt(pair[0]),"rawHeight",Integer.parseInt(pair[1])),false);
+            },InputType.TYPE_CLASS_TEXT);
+            MaterialButton capture=icon(context,R.drawable.ic_camera,"Capture RAW DNG");capture.setOnClickListener(v->this.raw.run());spacing(capture);
+        }
         number("Output width", "outputWidth", 2, 8192, true, true); number("Output height", "outputHeight", 2, 8192, true, true);
         menu("Aspect mapping", List.of("Fit", "Crop", "Stretch"), List.of(0, 1, 2), s -> s.optInt("outputMode"), value -> patch(Json.object("outputMode", value), true));
         menu("Rotation", List.of("0°", "90°", "180°", "270°"), List.of(0, 90, 180, 270), s -> s.optInt("phoneRotation"), value -> patch(Json.object("phoneRotation", value), true));
@@ -180,7 +200,7 @@ final class CameraControls {
             JSONArray gains = new JSONArray(); for (String part : parts) gains.put(Limits.checked("Gain", Double.parseDouble(part.trim()), 1, 8)); patch(Json.object("gains", gains), false);
         }, InputType.TYPE_CLASS_TEXT);
         toggle("White balance lock", "awbLock", camera.optBoolean("awbLock"));
-        toggle("Optical stabilization", "ois", has(camera.optJSONArray("oisModes"), 1)); toggle("Video stabilization", "stabilization", has(camera.optJSONArray("stabilizationModes"), 1));
+        toggle("Optical stabilization", "ois", has(camera.optJSONArray("oisModes"), 1)); toggle("Video stabilization", "stabilization", has(camera.optJSONArray("stabilizationModes"),1)||has(camera.optJSONArray("stabilizationModes"),2));
         String[] quality = {"Off", "Fast", "High quality", "Minimal", "Zero shutter lag"};
         mode("Noise reduction", "noiseReduction", "noiseModes", quality, true); mode("Sharpening", "edgeMode", "edgeModes", quality, true);
         mode("Chromatic correction", "aberrationMode", "aberrationModes", quality, true); mode("Lens correction", "lensCorrection", "lensCorrectionModes", quality, true);
