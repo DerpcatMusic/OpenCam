@@ -182,6 +182,7 @@ jobs:
           from pathlib import Path
           version = tomllib.loads(Path('Cargo.toml').read_text())['package']['version']
           assert os.environ['TAG'] == 'v' + version, 'Tag must match Cargo.toml version'
+          assert f"versionName '{version}'" in Path('android/app/build.gradle').read_text(), 'Android version must match the release'
           assert Path('dist/opencam-android-release.apk').is_file(), 'Signed release APK required'
           assert len(list(Path('dist').glob('*.sha256'))) == 5, 'All five packages required'
           PY

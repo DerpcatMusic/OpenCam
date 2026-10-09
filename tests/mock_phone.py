@@ -240,7 +240,7 @@ def smoke(binary):
             assert run.returncode == 0, run.stderr
             frame = json.loads(run.stdout)
             dimensions = [720,720] if "720x720" in extra else [640,480]
-            assert frame["lastFrame"] is not None and frame["lastFrame"][:2] == dimensions and frame["decodedFrames"] >= 40, frame
+            assert frame["lastFrame"] is not None and frame["lastFrame"][:2] == dimensions and frame["decodedFrames"] >= 40, {"arguments":extra,"report":frame,"stderr":run.stderr}
             if "--process-on" in extra:
                 if "desktop" in extra:
                     assert frame["processing"]["mode"] == "Desktop" and frame["processing"]["outputFps"] > 0, frame

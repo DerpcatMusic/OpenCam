@@ -350,7 +350,7 @@ impl Worker {
             let mut segmenter = None;
             let mut last_mask = Instant::now() - Duration::from_secs(1);
             let mut report_time = Instant::now();
-            let adapters = gpu::adapters();
+            let mut adapters = None;
             let mut processed = 0u64;
             let mut interval = Instant::now();
             loop {
@@ -366,6 +366,9 @@ impl Worker {
                 let queue_ms = queued.elapsed().as_secs_f64() * 1000.;
                 let started = Instant::now();
                 let o = shared.processing.lock().unwrap().clone();
+                if o.backend != "cpu" && adapters.is_none() {
+                    adapters = Some(gpu::adapters());
+                }
                 if o.blur > 0. {
                     if segmenter
                         .as_ref()
@@ -457,7 +460,7 @@ impl Worker {
                 *shared.frame.lock().unwrap() = Some(output);
                 processed += 1;
                 if report_time.elapsed() >= Duration::from_millis(500) {
-                    *shared.desktop_processing_report.lock().unwrap() = json!({"mode":"Desktop", "backend":if o.identity(frame.width,frame.height){"Bypass"}else{&chosen},"frameMs":elapsed,"queueMs":queue_ms,"outputFps":processed as f64/interval.elapsed().as_secs_f64(),"cpuMs":cpu_ms,"gpuMs":gpu_ms,"dropped":drops.load(Ordering::Relaxed),"error":error,"adapters":adapters,"ml":segmenter.as_ref().map(|s|s.report())});
+                    *shared.desktop_processing_report.lock().unwrap() = json!({"mode":"Desktop", "backend":if o.identity(frame.width,frame.height){"Bypass"}else{&chosen},"frameMs":elapsed,"queueMs":queue_ms,"outputFps":processed as f64/interval.elapsed().as_secs_f64(),"cpuMs":cpu_ms,"gpuMs":gpu_ms,"dropped":drops.load(Ordering::Relaxed),"error":error,"adapters":adapters.as_ref().unwrap_or(&json!([])),"ml":segmenter.as_ref().map(|s|s.report())});
                     processed = 0;
                     interval = Instant::now();
                     report_time = Instant::now();
