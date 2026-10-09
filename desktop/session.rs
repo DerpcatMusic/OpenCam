@@ -908,13 +908,13 @@ mod recovery_tests {
             data.extend([y, y, y, y, 128, 128]);
             decoder.push(&data).unwrap();
             let frame = shared.frame.lock().unwrap();
+            let pixels = &frame.as_ref().unwrap().pixels;
+            // libswscale's scalar and SIMD paths differ by up to two levels at limited-range white.
             assert!(
-                frame
-                    .as_ref()
-                    .unwrap()
-                    .pixels
+                pixels
                     .chunks_exact(4)
-                    .all(|p| p[..3].iter().all(|c| c.abs_diff(expected) <= 1) && p[3] == 255)
+                    .all(|p| p[..3].iter().all(|c| c.abs_diff(expected) <= 2) && p[3] == 255),
+                "Expected neutral {expected}, got {pixels:?}"
             );
         }
         let mut decoder = Decoder::start(
