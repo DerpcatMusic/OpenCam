@@ -10,7 +10,7 @@ This is a working first version, not a verified Iriun replacement on every devic
 
 ## Run
 
-Download a package from [GitHub Releases](https://github.com/DerpcatMusic/OpenCam/releases). Linux x86_64, Windows x86_64, macOS Apple Silicon and macOS Intel packages include FFmpeg and the CPU ONNX Runtime. Extract the entire archive; launch `opencam` on Linux, `opencam.exe` on Windows, or `OpenCam.app` on macOS. Linux packages target Ubuntu 24.04 or compatible systems. Desktop builds lack Windows publisher signing and Apple notarization. The Android release APK has a persistent project signing key; Actions pull requests produce a debug APK instead.
+Download a package from [GitHub Releases](https://github.com/DerpcatMusic/OpenCam/releases). Linux x86_64, Windows x86_64, macOS Apple Silicon and macOS Intel packages include FFmpeg and the CPU ONNX Runtime. Extract the entire archive; launch `opencam` on Linux, `opencam.exe` on Windows, or `OpenCam.app` on macOS 14+. Linux packages target Ubuntu 24.04 or compatible systems. Desktop builds lack Windows publisher signing and Apple notarization. The Android release APK has a persistent project signing key; Actions pull requests produce a debug APK instead. Intel Macs bundle ONNX Runtime 1.23.2, the last available Intel prebuilt; the other desktop packages bundle 1.30.0. Both support the binding's API 22, checked during packaging.
 
 OpenCam uses `dev.opencam` on Android and `opencam://` pairing links. The earlier Lenslink prototype is a separate app: install both OpenCam builds and pair again. Existing Lenslink settings are not migrated.
 

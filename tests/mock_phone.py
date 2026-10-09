@@ -235,12 +235,12 @@ def smoke(binary):
         formats = []
         for extra in [["--output","720x720"], ["--size","960x720","--fps","27","--output","640x480","--crop"],
                       ["--size","960x720","--fps","27","--output","720x720","--process-on","phone"],
-                      ["--size","960x720","--fps","27","--output","640x480","--process-on","desktop","--stretch","1.4"]]:
+                      ["--size","960x720","--fps","27","--output","640x480","--process-on","desktop","--backend","cpu","--stretch","1.4"]]:
             run = subprocess.run([str(binary),"--pair",phone.link,"--seconds","2"]+extra,capture_output=True,text=True,timeout=30)
             assert run.returncode == 0, run.stderr
             frame = json.loads(run.stdout)
             dimensions = [720,720] if "720x720" in extra else [640,480]
-            assert frame["lastFrame"][:2] == dimensions and frame["decodedFrames"] >= 40, frame
+            assert frame["lastFrame"] is not None and frame["lastFrame"][:2] == dimensions and frame["decodedFrames"] >= 40, frame
             if "--process-on" in extra:
                 if "desktop" in extra:
                     assert frame["processing"]["mode"] == "Desktop" and frame["processing"]["outputFps"] > 0, frame

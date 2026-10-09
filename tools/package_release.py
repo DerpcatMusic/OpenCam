@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bundle the native executables, decoder and ML runtime into a release archive."""
 import argparse
+import ctypes
 import hashlib
 import json
 from pathlib import Path
@@ -42,7 +43,7 @@ def main():
                           'CFBundleIdentifier': 'dev.opencam.desktop', 'CFBundleExecutable': 'opencam',
                           'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': version,
                           'CFBundleVersion': version, 'NSHighResolutionCapable': True,
-                          'LSMinimumSystemVersion': '13.0'}, file)
+                          'LSMinimumSystemVersion': '14.0'}, file)
     for executable in ['opencam', 'opencam-probe']:
         filename = executable + ('.exe' if system == 'Windows' else '')
         shutil.copy2(args.binaries / filename, binaries / filename)
@@ -52,6 +53,9 @@ def main():
     (folder / 'fonts').mkdir()
     shutil.copy2('desktop/fonts/OFL.txt', folder / 'fonts')
     fetch_runtime([str(binaries)])
+    runtime_notices = folder / 'vendor' / 'onnxruntime'
+    shutil.move(str(binaries / 'onnxruntime-notices'), runtime_notices)
+    shutil.move(str(binaries / 'onnxruntime-package.json'), runtime_notices / 'package.json')
     libraries = binaries if system != 'Linux' else binaries / 'lib'
     libraries.mkdir(exist_ok=True)
     patterns = {'Linux': 'lib*.so*', 'Darwin': 'lib*.dylib', 'Windows': '*.dll'}
@@ -76,7 +80,7 @@ def main():
                 run('patchelf', '--set-rpath', '$ORIGIN', str(library))
     elif system == 'Darwin':
         for file in binaries.iterdir():
-            if file.is_symlink() or file.suffix not in {'.dylib', ''}:
+            if not file.is_file() or file.is_symlink() or file.suffix not in {'.dylib', ''}:
                 continue
             dependencies = run('otool', '-L', str(file)).splitlines()[1:]
             if file.suffix == '.dylib':
@@ -90,8 +94,19 @@ def main():
                 run('install_name_tool', '-change', dependency, '@loader_path/' + basename, str(file))
             if file.suffix == '.dylib':
                 run('install_name_tool', '-id', '@rpath/' + file.name, str(file))
-            run('codesign', '--force', '--sign', '-', str(file))
+            if file.name != 'opencam':
+                run('codesign', '--force', '--sign', '-', str(file))
         run('codesign', '--force', '--deep', '--sign', '-', str(folder / 'OpenCam.app'))
+        run('codesign', '--verify', '--deep', '--strict', str(folder / 'OpenCam.app'))
+    runtime_name = {'Linux': 'libonnxruntime.so', 'Darwin': 'libonnxruntime.dylib', 'Windows': 'onnxruntime.dll'}[system]
+    class ApiBase(ctypes.Structure):
+        _fields_ = [('get_api', ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_uint32)),
+                    ('version', ctypes.CFUNCTYPE(ctypes.c_char_p))]
+    runtime = ctypes.CDLL(str((binaries / runtime_name).resolve()))
+    runtime.OrtGetApiBase.restype = ctypes.POINTER(ApiBase)
+    api = runtime.OrtGetApiBase().contents
+    assert api.get_api(22), 'ONNX Runtime must support the Rust binding API 22'
+    print('Verified ONNX Runtime API 22:', api.version().decode())
     if system == 'Windows':
         archive = args.destination / (name + '.zip')
         with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as file:

@@ -16,10 +16,12 @@ def main(argv=None):
     parser.add_argument("destination", type=Path)
     args = parser.parse_args(argv)
     system, arch = platform.system(), platform.machine().lower()
+    # ponytail: Intel Mac stays on the last prebuilt runtime until upstream ships Intel binaries again.
+    version = "1.23.2" if (system, arch) == ("Darwin", "x86_64") else VERSION
     tag = {("Linux", "x86_64"): "manylinux_2_28_x86_64", ("Linux", "aarch64"): "manylinux_2_28_aarch64", ("Windows", "amd64"): "win_amd64", ("Darwin", "arm64"): "macosx_", ("Darwin", "x86_64"): "macosx_"}.get((system, arch))
     if tag is None:
         raise SystemExit(f"No bundled runtime for {system}/{arch}; set ORT_DYLIB_PATH to your own runtime")
-    metadata = json.load(urllib.request.urlopen(f"https://pypi.org/pypi/onnxruntime/{VERSION}/json", timeout=30))
+    metadata = json.load(urllib.request.urlopen(f"https://pypi.org/pypi/onnxruntime/{version}/json", timeout=30))
     candidates = [f for f in metadata["urls"] if "cp311-cp311" in f["filename"] and tag in f["filename"] and (system != "Darwin" or "universal2" in f["filename"] or arch in f["filename"])]
     if len(candidates) != 1:
         raise SystemExit(f"Expected one matching runtime wheel, found {len(candidates)}")
@@ -44,8 +46,8 @@ def main(argv=None):
                 (notices / base).write_bytes(archive.read(name))
     expected = {"Linux": "libonnxruntime.so", "Windows": "onnxruntime.dll", "Darwin": "libonnxruntime.dylib"}[system]
     assert expected in libraries, "Wheel did not contain the C runtime"
-    (args.destination / "onnxruntime-package.json").write_text(json.dumps({"version": VERSION, "source": package["url"], "sha256": package["digests"]["sha256"], "libraries": libraries}, indent=2) + "\n")
-    print(f"ONNX Runtime {VERSION}: {', '.join(libraries)}")
+    (args.destination / "onnxruntime-package.json").write_text(json.dumps({"version": version, "source": package["url"], "sha256": package["digests"]["sha256"], "libraries": libraries}, indent=2) + "\n")
+    print(f"ONNX Runtime {version}: {', '.join(libraries)}")
 
 if __name__ == "__main__":
     main()
