@@ -1,0 +1,35 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'dev.opencam'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'dev.opencam'
+        minSdk 30
+        targetSdk 36
+        versionCode 1
+        versionName '0.1.0'
+        testInstrumentationRunner 'dev.opencam.ProcessingTest'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    def releaseStore = System.getenv('OPENCAM_KEYSTORE')
+    if (releaseStore) {
+        signingConfigs {
+            release {
+                storeFile file(releaseStore)
+                storePassword System.getenv('OPENCAM_KEYSTORE_PASSWORD')
+                keyAlias 'opencam'
+                keyPassword System.getenv('OPENCAM_KEYSTORE_PASSWORD')
+            }
+        }
+        buildTypes.release.signingConfig = signingConfigs.release
+    }
+}
+
+dependencies {
+    implementation 'com.google.android.material:material:1.14.0'
+    implementation 'com.google.mediapipe:tasks-vision:0.10.35'
+}

@@ -1,0 +1,48 @@
+{
+  "syntheticInput": true,
+  "adapter": "AMD Radeon RX 6600 (RADV NAVI23) \u00b7 Vulkan",
+  "gpuWarpMs": 4.460177,
+  "cpuGpuMaxChannelDifference": 1,
+  "dimensions": [
+    120,
+    120
+  ],
+  "segmentation": {
+    "selected": "cpu",
+    "benchmarks": [
+      {
+        "provider": "cpu",
+        "ms": 2.5129360000000003
+      },
+      {
+        "provider": "cuda",
+        "error": "cuda is not provided by this ONNX Runtime"
+      },
+      {
+        "provider": "migraphx",
+        "error": "migraphx is not provided by this ONNX Runtime"
+      },
+      {
+        "provider": "rocm",
+        "error": "rocm is not provided by this ONNX Runtime"
+      },
+      {
+        "provider": "openvino",
+        "error": "openvino is not provided by this ONNX Runtime"
+      },
+      {
+        "provider": "directml",
+        "error": "directml is not provided by this ONNX Runtime"
+      },
+      {
+        "provider": "coreml",
+        "error": "coreml is not provided by this ONNX Runtime"
+      }
+    ],
+    "maskPixels": 36864,
+    "inferenceMs": 2.1906730000000003,
+    "min": 0.0,
+    "max": 0.0
+  },
+  "note": "Synthetic 160x120 input on the local AMD RX 6600 Vulkan adapter. Shader/CPU agreement and inference are verified; these timings are not a full-resolution camera or Iriun comparison."
+}

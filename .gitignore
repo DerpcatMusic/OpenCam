@@ -1,0 +1,14 @@
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+/dist/
+*.log
+/.impeccable/review/
+__pycache__/
+/opencam-camera-report.json
+/target/
+/FFmpegSDK/
+*.jks
+*.keystore
+/.DS_Store

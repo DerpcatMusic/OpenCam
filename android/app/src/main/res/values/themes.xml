@@ -1,0 +1,16 @@
+<resources>
+    <style name="Theme.OpenCam" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#a5a0ff</item>
+        <item name="colorOnPrimary">#060606</item>
+        <item name="colorSurface">#060606</item>
+        <item name="colorOnSurface">#e8e8e8</item>
+        <item name="colorSurfaceVariant">#161616</item>
+        <item name="colorOnSurfaceVariant">#a8a8a8</item>
+        <item name="colorOutline">#626262</item>
+        <item name="fontFamily">@font/geist</item>
+        <item name="android:fontFamily">@font/geist</item>
+        <item name="android:windowBackground">?attr/colorSurface</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

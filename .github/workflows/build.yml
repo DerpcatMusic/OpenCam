@@ -1,0 +1,192 @@
+name: Build OpenCam
+on:
+  push:
+    branches: [main, opencam]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  desktop:
+    name: Desktop / ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+          - os: windows-2025
+            platform: windows-x86_64
+          - os: macos-15
+            platform: macos-aarch64
+          - os: macos-15-intel
+            platform: macos-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang pkg-config nasm patchelf ffmpeg mesa-vulkan-drivers libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb-shape0-dev libxcb-xfixes0-dev libxcb-randr0-dev libxcb-xinput-dev libegl1-mesa-dev libgles2-mesa-dev libglib2.0-dev libfontconfig-dev
+      - name: macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install nasm pkg-config
+      - name: Build LGPL decoder
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          bash tools/build_ffmpeg.sh "$RUNNER_TEMP/ffmpeg"
+          echo "FFMPEG_DIR=$RUNNER_TEMP/ffmpeg" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            echo "LD_LIBRARY_PATH=$RUNNER_TEMP/ffmpeg/lib" >> "$GITHUB_ENV"
+          fi
+      - name: Windows dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          "LIBCLANG_PATH=$vsPath\VC\Tools\LLVM\x64\bin" >> $env:GITHUB_ENV
+          $release = Invoke-RestMethod https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest -Headers @{ 'User-Agent' = 'OpenCam' }
+          $asset = $release.assets | Where-Object name -eq 'ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip'
+          if (!$asset -or !$asset.digest.StartsWith('sha256:')) { throw 'LGPL FFmpeg SDK/checksum missing' }
+          Invoke-WebRequest $asset.browser_download_url -OutFile ffmpeg-sdk.zip
+          $sha = (Get-FileHash ffmpeg-sdk.zip -Algorithm SHA256).Hash.ToLower()
+          if ("sha256:$sha" -ne $asset.digest) { throw 'FFmpeg checksum mismatch' }
+          Expand-Archive ffmpeg-sdk.zip FFmpegSDK
+          $sdkPath = (Get-ChildItem FFmpegSDK -Directory | Select-Object -First 1).FullName
+          @{ url = $asset.browser_download_url; sha256 = $sha; source = 'https://github.com/BtbN/FFmpeg-Builds'; license = 'LGPL' } | ConvertTo-Json | Set-Content "$sdkPath\opencam-provenance.json"
+          "FFMPEG_DIR=$sdkPath" >> $env:GITHUB_ENV
+          "$sdkPath\bin" >> $env:GITHUB_PATH
+      - run: cargo fmt --all --check
+      - run: cargo test --locked --bins -j 2
+      - run: cargo build --locked --release --bins -j 2
+      - name: Protocol and decoder integration
+        if: runner.os == 'Linux'
+        run: python3 tests/mock_phone.py --probe target/release/opencam-probe
+      - name: Package desktop
+        shell: bash
+        run: python3 tools/package_release.py --binaries target/release --ffmpeg "$FFMPEG_DIR"
+      - name: Packaged decoder and CPU model check
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          unset LD_LIBRARY_PATH
+          package=$(find dist -maxdepth 1 -type d -name 'opencam-*' | head -1)
+          python3 tests/mock_phone.py --probe "$package/opencam-probe"
+          "$package/opencam-probe" --processing-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencam-${{ matrix.platform }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  android:
+    name: Android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+      OPENCAM_KEYSTORE_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Load release key
+        id: signing
+        shell: bash
+        run: |
+          echo 'variant=debug' >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" != pull_request && -n "$ANDROID_KEYSTORE_BASE64" ]]; then
+            python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          keystore = Path(os.environ['RUNNER_TEMP']) / 'opencam.jks'
+          keystore.write_bytes(base64.b64decode(os.environ['ANDROID_KEYSTORE_BASE64'], validate=True))
+          keystore.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'], 'a') as file:
+              file.write(f'OPENCAM_KEYSTORE={keystore}\n')
+          PY
+            echo 'variant=release' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Verify and build APK
+        shell: bash
+        env:
+          VARIANT: ${{ steps.signing.outputs.variant }}
+        run: |
+          javac -d "$RUNNER_TEMP/opencam-tests" android/app/src/main/java/dev/opencam/{Limits,Auth}.java android/tests/{LimitsTest,AuthTest}.java
+          java -ea -cp "$RUNNER_TEMP/opencam-tests" dev.opencam.LimitsTest
+          java -ea -cp "$RUNNER_TEMP/opencam-tests" dev.opencam.AuthTest
+          ./android/gradlew -p android "assemble${VARIANT^}" --console=plain
+          mkdir -p dist
+          cp "android/app/build/outputs/apk/$VARIANT/app-$VARIANT.apk" "dist/opencam-android-$VARIANT.apk"
+          cd dist
+          sha256sum *.apk > "opencam-android-$VARIANT.apk.sha256"
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/opencam.jks"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencam-android
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: opencam-*
+          merge-multiple: true
+          path: dist
+      - name: Check release identity and checksums
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path('Cargo.toml').read_text())['package']['version']
+          assert os.environ['TAG'] == 'v' + version, 'Tag must match Cargo.toml version'
+          assert Path('dist/opencam-android-release.apk').is_file(), 'Signed release APK required'
+          assert len(list(Path('dist').glob('*.sha256'))) == 5, 'All five packages required'
+          PY
+          cd dist
+          cat *.sha256 > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Publish downloadable packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/*.tar.gz dist/*.zip dist/*.apk dist/SHA256SUMS --verify-tag --title "OpenCam $TAG" --notes-file .github/RELEASE.md

@@ -1,0 +1,176 @@
+{
+  "test": "synthetic protocol/decoder integration",
+  "stream": {
+    "configured": {
+      "type": "configured",
+      "width": 1280,
+      "height": 720,
+      "fps": 30,
+      "mime": "video/avc",
+      "timestampsRealtime": true,
+      "settings": {
+        "camera": "fixture",
+        "codec": "fixture.avc",
+        "width": 1280,
+        "height": 720,
+        "fps": 30,
+        "bitrate": 8000000,
+        "manual": false,
+        "iso": 100,
+        "exposureNs": 8333333,
+        "focusAuto": true,
+        "focus": 0,
+        "zoom": 1.0,
+        "ev": 0,
+        "awb": 1,
+        "ois": false,
+        "stabilization": false,
+        "torch": false,
+        "aeLock": false,
+        "awbLock": false,
+        "gains": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "decodedFrames": 91,
+    "videoBytes": 2863864,
+    "lastEstimatedAgeMs": 2.298302500061225,
+    "bestRoundTripMs": 0.204473,
+    "lastFrame": [
+      1280,
+      720,
+      91,
+      3686400
+    ]
+  },
+  "benchmark": {
+    "results": [
+      {
+        "codec": "fixture.avc",
+        "label": "H.264",
+        "decoded_fps": 29.962662591309897,
+        "mbps": 7.486245555842005,
+        "estimated_age_ms": 2.0637925372257806,
+        "error": null
+      },
+      {
+        "codec": "fixture.hevc",
+        "label": "HEVC",
+        "decoded_fps": 29.973099359131492,
+        "mbps": 2.6907690541474394,
+        "estimated_age_ms": 2.7973518585107975,
+        "error": null
+      }
+    ],
+    "winner": {
+      "codec": "fixture.avc",
+      "label": "H.264",
+      "decoded_fps": 29.962662591309897,
+      "mbps": 7.486245555842005,
+      "estimated_age_ms": 2.0637925372257806,
+      "error": null
+    },
+    "note": "Frame age is a clock-synchronized estimate, not glass-to-glass latency"
+  },
+  "formats": [
+    {
+      "configured": {
+        "type": "configured",
+        "width": 1280,
+        "height": 720,
+        "fps": 30,
+        "mime": "video/avc",
+        "timestampsRealtime": true,
+        "settings": {
+          "camera": "fixture",
+          "codec": "fixture.avc",
+          "width": 1280,
+          "height": 720,
+          "fps": 30,
+          "bitrate": 8000000,
+          "manual": false,
+          "iso": 100,
+          "exposureNs": 8333333,
+          "focusAuto": true,
+          "focus": 0,
+          "zoom": 1.0,
+          "ev": 0,
+          "awb": 1,
+          "ois": false,
+          "stabilization": false,
+          "torch": false,
+          "aeLock": false,
+          "awbLock": false,
+          "gains": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "decodedFrames": 60,
+      "videoBytes": 1920194,
+      "lastEstimatedAgeMs": 8.00914349914575,
+      "bestRoundTripMs": 0.159283,
+      "lastFrame": [
+        720,
+        720,
+        60,
+        2073600
+      ]
+    },
+    {
+      "configured": {
+        "type": "configured",
+        "width": 960,
+        "height": 720,
+        "fps": 27,
+        "mime": "video/avc",
+        "timestampsRealtime": true,
+        "settings": {
+          "camera": "fixture",
+          "codec": "fixture.avc",
+          "width": 960,
+          "height": 720,
+          "fps": 27,
+          "bitrate": 8000000,
+          "manual": false,
+          "iso": 100,
+          "exposureNs": 8333333,
+          "focusAuto": true,
+          "focus": 0,
+          "zoom": 1.0,
+          "ev": 0,
+          "awb": 1,
+          "ois": false,
+          "stabilization": false,
+          "torch": false,
+          "aeLock": false,
+          "awbLock": false,
+          "gains": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      },
+      "decodedFrames": 55,
+      "videoBytes": 1420096,
+      "lastEstimatedAgeMs": 2.2057820014646277,
+      "bestRoundTripMs": 0.10503200000000001,
+      "lastFrame": [
+        640,
+        480,
+        55,
+        1228800
+      ]
+    }
+  ],
+  "passwordGate": "missing/wrong denied before capabilities; correct accepted"
+}

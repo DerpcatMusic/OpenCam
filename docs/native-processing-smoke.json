@@ -1,0 +1,27 @@
+{
+  "device": "sdk_gphone64_x86_64",
+  "syntheticInput": true,
+  "warpChangedPixels": 12879,
+  "outputWidth": 160,
+  "outputHeight": 120,
+  "gpu": {
+    "mode": "phone GPU",
+    "frameSubmitMs": 351.156252,
+    "frames": 3,
+    "ml": {
+      "delegate": "warming up",
+      "inferenceMs": 0,
+      "cpuMs": null,
+      "gpuMs": null,
+      "maskAgeMs": null
+    }
+  },
+  "segmentation": {
+    "delegate": "CPU",
+    "inferenceMs": 5.346685,
+    "cpuMs": 4.589051666666667,
+    "gpuMs": null,
+    "maskAgeMs": 76
+  },
+  "note": "Synthetic Canvas input on a software-graphics Android emulator. These timings are not Nothing-phone or hardware-GPU measurements."
+}

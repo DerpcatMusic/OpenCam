@@ -1,0 +1,32 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:fillViewport="true" android:background="?attr/colorSurface">
+    <LinearLayout android:id="@+id/content" android:orientation="vertical"
+        android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="24dp">
+        <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp" android:text="Camera access is off"
+            android:textAppearance="?attr/textAppearanceBodyMedium" android:textColor="?attr/colorOnSurface" />
+        <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/protect"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp"
+            android:layout_marginBottom="8dp" android:text="Password protection" />
+        <com.google.android.material.textfield.TextInputLayout android:id="@+id/password_field"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp"
+            android:hint="Password" app:helperText="8–128 characters" app:endIconMode="password_toggle">
+            <com.google.android.material.textfield.TextInputEditText android:id="@+id/password"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:singleLine="true" android:inputType="textPassword" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <com.google.android.material.button.MaterialButton android:id="@+id/start"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp"
+            android:layout_marginBottom="8dp" android:text="Enable connection" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/copy"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp"
+            android:enabled="false" android:text="Copy pairing link" />
+        <TextView android:id="@+id/pairing" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="24dp" android:textIsSelectable="true"
+            android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorOnSurfaceVariant" />
+    </LinearLayout>
+</ScrollView>

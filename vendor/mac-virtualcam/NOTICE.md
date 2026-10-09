@@ -1,0 +1,1 @@
+Native Camera Extension adapter derived from the MIT-licensed macOS backend in https://github.com/letmaik/pyvirtualcam. Adapted to packed UYVY from the existing FFmpeg decoder, with bounded queues, stride-safe copies and checked native calls. No Python runtime.

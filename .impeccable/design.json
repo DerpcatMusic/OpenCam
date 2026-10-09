@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-09T08:47:46Z",
+  "title": "Design System: OpenCam",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Soft lavender",
+        "canonical": "#a5a0ff",
+        "tonalRamp": [
+          "oklch(15% 0.135 285)", "oklch(25% 0.135 285)", "oklch(35% 0.135 285)", "oklch(45% 0.135 285)",
+          "oklch(55% 0.135 285)", "oklch(65% 0.135 285)", "oklch(80% 0.135 285)", "oklch(95% 0.135 285)"
+        ]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Night canvas",
+        "canonical": "#060606",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"]
+      },
+      "neutral-rail": {
+        "role": "neutral",
+        "displayName": "Raised rail",
+        "canonical": "#0d0d0d",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"]
+      },
+      "neutral-panel": {
+        "role": "neutral",
+        "displayName": "Floating panel",
+        "canonical": "#111111f5",
+        "tonalRamp": ["oklch(15% 0 0 / 96%)", "oklch(25% 0 0 / 96%)", "oklch(35% 0 0 / 96%)", "oklch(45% 0 0 / 96%)", "oklch(55% 0 0 / 96%)", "oklch(65% 0 0 / 96%)", "oklch(80% 0 0 / 96%)", "oklch(95% 0 0 / 96%)"]
+      },
+      "neutral-variant": {
+        "role": "neutral",
+        "displayName": "Material variant",
+        "canonical": "#161616",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"]
+      },
+      "neutral-menu": {
+        "role": "neutral",
+        "displayName": "Menu glass",
+        "canonical": "#161616eb",
+        "tonalRamp": ["oklch(15% 0 0 / 92%)", "oklch(25% 0 0 / 92%)", "oklch(35% 0 0 / 92%)", "oklch(45% 0 0 / 92%)", "oklch(55% 0 0 / 92%)", "oklch(65% 0 0 / 92%)", "oklch(80% 0 0 / 92%)", "oklch(95% 0 0 / 92%)"]
+      },
+      "neutral-divider": {
+        "role": "neutral",
+        "displayName": "Hairline divider",
+        "canonical": "#252525",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"]
+      },
+      "neutral-outline": {
+        "role": "neutral",
+        "displayName": "Android outline",
+        "canonical": "#626262",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"]
+      },
+      "neutral-text": {
+        "role": "neutral",
+        "displayName": "Main ink",
+        "canonical": "#e8e8e8",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"]
+      },
+      "neutral-muted": {
+        "role": "neutral",
+        "displayName": "Muted ink",
+        "canonical": "#a8a8a8",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"]
+      },
+      "neutral-slider-track": {
+        "role": "neutral",
+        "displayName": "Slider track",
+        "canonical": "#4b4d55",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"]
+      },
+      "neutral-slider-thumb": {
+        "role": "neutral",
+        "displayName": "Slider thumb",
+        "canonical": "#cdced4",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(25% 0 0)", "oklch(35% 0 0)", "oklch(45% 0 0)", "oklch(55% 0 0)", "oklch(65% 0 0)", "oklch(80% 0 0)", "oklch(95% 0 0)"]
+      },
+      "control-field-wash": {
+        "role": "neutral",
+        "displayName": "Field wash",
+        "canonical": "rgba(255,255,255,0.055)",
+        "tonalRamp": ["oklch(15% 0 0 / 5.5%)", "oklch(25% 0 0 / 5.5%)", "oklch(35% 0 0 / 5.5%)", "oklch(45% 0 0 / 5.5%)", "oklch(55% 0 0 / 5.5%)", "oklch(65% 0 0 / 5.5%)", "oklch(80% 0 0 / 5.5%)", "oklch(95% 0 0 / 5.5%)"]
+      },
+      "control-rest-wash": {
+        "role": "neutral",
+        "displayName": "Rest wash",
+        "canonical": "rgba(255,255,255,0.035)",
+        "tonalRamp": ["oklch(15% 0 0 / 3.5%)", "oklch(25% 0 0 / 3.5%)", "oklch(35% 0 0 / 3.5%)", "oklch(45% 0 0 / 3.5%)", "oklch(55% 0 0 / 3.5%)", "oklch(65% 0 0 / 3.5%)", "oklch(80% 0 0 / 3.5%)", "oklch(95% 0 0 / 3.5%)"]
+      },
+      "control-selected-wash": {
+        "role": "neutral",
+        "displayName": "Selected wash",
+        "canonical": "rgba(255,255,255,0.11)",
+        "tonalRamp": ["oklch(15% 0 0 / 11%)", "oklch(25% 0 0 / 11%)", "oklch(35% 0 0 / 11%)", "oklch(45% 0 0 / 11%)", "oklch(55% 0 0 / 11%)", "oklch(65% 0 0 / 11%)", "oklch(80% 0 0 / 11%)", "oklch(95% 0 0 / 11%)"]
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "Geist UI",
+        "purpose": "Desktop labels and ordinary interface text; Android uses Material 3 semantic roles with the same bundled family."
+      },
+      "telemetry": {
+        "displayName": "Geist Mono",
+        "purpose": "Changing frame-rate, bitrate, and frame-age values."
+      }
+    },
+    "shadows": [
+      {
+        "name": "floating-surface",
+        "value": "gpui_base::shadow_lg()",
+        "purpose": "Desktop floating palettes and selection menus."
+      }
+    ],
+    "motion": [],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Desktop rail button",
+      "kind": "button",
+      "refersTo": "desktop-rail-button-selected",
+      "description": "A 32px icon target; selection uses the accent and a stronger white wash.",
+      "html": "<button class=\"ds-rail-button\" type=\"button\" aria-label=\"Geometry controls\" aria-pressed=\"true\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M22 19H13C9.22876 19 7.34315 19 6.17157 17.8284C5 16.6569 5 14.7712 5 11V2\"/><path d=\"M8 5H11C14.7712 5 16.6569 5 17.8284 6.17157C19 7.34315 19 9.22876 19 13V16M2 5H5M19 19V22\"/><path d=\"M8.5 11.5C8.5 10.0858 8.5 9.37868 8.93934 8.93934C9.37868 8.5 10.0858 8.5 11.5 8.5H12.5C13.9142 8.5 14.6213 8.5 15.0607 8.93934C15.5 9.37868 15.5 10.0858 15.5 11.5V12.5C15.5 13.9142 15.5 14.6213 15.0607 15.0607C14.6213 15.5 13.9142 15.5 12.5 15.5H11.5C10.0858 15.5 9.37868 15.5 8.93934 15.0607C8.5 14.6213 8.5 13.9142 8.5 12.5V11.5Z\"/></svg></button>",
+      "css": ".ds-rail-button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: rgba(255,255,255,0.11); color: #a5a0ff; } .ds-rail-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; } .ds-rail-button:hover { background: rgba(255,255,255,0.11); } .ds-rail-button:focus-visible { outline: 1px solid #a5a0ff; outline-offset: 0; } .ds-rail-button:disabled { opacity: 0.4; }"
+    },
+    {
+      "name": "Desktop navigation rail",
+      "kind": "nav",
+      "refersTo": "desktop-navigation-rail",
+      "description": "Separate icon rails stay narrow beside the flexible preview.",
+      "html": "<nav class=\"ds-nav-rail\" aria-label=\"Camera tools\"><button class=\"ds-nav-icon\" type=\"button\" aria-label=\"Phone and lenses\"><svg viewBox=\"0 0 24 24\"><path d=\"M4 10C4 6.22876 4 4.34315 5.17157 3.17157C6.34315 2 8.22876 2 12 2C15.7712 2 17.6569 2 18.8284 3.17157C20 4.34315 20 6.22876 20 10V14C20 17.7712 20 19.6569 18.8284 20.8284C17.6569 22 15.7712 22 12 22C8.22876 22 6.34315 22 5.17157 20.8284C4 19.6569 4 17.7712 4 14V10Z\"/><path d=\"M15 19H9\"/></svg></button><button class=\"ds-nav-icon\" type=\"button\" aria-label=\"Geometry controls\" aria-pressed=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M22 19H13C9.22876 19 7.34315 19 6.17157 17.8284C5 16.6569 5 14.7712 5 11V2\"/><path d=\"M8 5H11C14.7712 5 16.6569 5 17.8284 6.17157C19 7.34315 19 9.22876 19 13V16M2 5H5M19 19V22\"/><path d=\"M8.5 11.5C8.5 10.0858 8.5 9.37868 8.93934 8.93934C9.37868 8.5 10.0858 8.5 11.5 8.5H12.5C13.9142 8.5 14.6213 8.5 15.0607 8.93934C15.5 9.37868 15.5 10.0858 15.5 11.5V12.5C15.5 13.9142 15.5 14.6213 15.0607 15.0607C14.6213 15.5 13.9142 15.5 12.5 15.5H11.5C10.0858 15.5 9.37868 15.5 8.93934 15.0607C8.5 14.6213 8.5 13.9142 8.5 12.5V11.5Z\"/></svg></button></nav>",
+      "css": ".ds-nav-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 44px; padding: 8px 0; border-radius: 12px; background: #0d0d0d; } .ds-nav-icon { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: rgba(255,255,255,0.035); color: #e8e8e8; } .ds-nav-icon:hover, .ds-nav-icon[aria-pressed=\"true\"] { background: rgba(255,255,255,0.11); } .ds-nav-icon[aria-pressed=\"true\"] { color: #a5a0ff; } .ds-nav-icon:focus-visible { outline: 1px solid #a5a0ff; } .ds-nav-icon:disabled { opacity: 0.4; } .ds-nav-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }"
+    },
+    {
+      "name": "Desktop editable format control",
+      "kind": "input",
+      "refersTo": "desktop-edit-field",
+      "description": "Editable value with separate suggestion and apply actions.",
+      "html": "<div class=\"ds-format-row\"><input class=\"ds-format-input\" aria-label=\"Sensor resolution\" value=\"960x720\"><button class=\"ds-format-action\" aria-label=\"Choose a value\"><svg viewBox=\"0 0 24 24\"><path d=\"M17.5 9.25 12 14.75 6.5 9.25\"/></svg></button><button class=\"ds-format-action\" aria-label=\"Apply typed value\"><svg viewBox=\"0 0 16 16\"><path d=\"M3.5 8.5l3 3 6-7\"/></svg></button></div>",
+      "css": ".ds-format-row { display: flex; align-items: center; gap: 4px; } .ds-format-input { flex: 1; min-width: 0; height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: rgba(255,255,255,0.055); color: #e8e8e8; font: 12px Geist, sans-serif; } .ds-format-input:focus-visible { outline: 1px solid #a5a0ff; } .ds-format-action { display: grid; place-items: center; width: 24px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: rgba(255,255,255,0.035); color: #e8e8e8; } .ds-format-action:hover { background: rgba(255,255,255,0.11); } .ds-format-action:focus-visible { outline: 1px solid #a5a0ff; } .ds-format-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }"
+    },
+    {
+      "name": "Desktop floating tool palette",
+      "kind": "custom",
+      "refersTo": "desktop-tool-palette",
+      "description": "The selected tool floats over the live preview and scrolls when its controls exceed the available height.",
+      "html": "<section class=\"ds-tool-palette\"><div class=\"ds-tool-caption\">Process on</div><button class=\"ds-tool-select\" type=\"button\" aria-label=\"Process on: Desktop\" aria-pressed=\"false\">Desktop<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M17.5 9.25 12 14.75 6.5 9.25\"/></svg></button><div class=\"ds-slider-label\"><span>Horizontal stretch</span><span class=\"ds-slider-value\">1.00×</span></div><div class=\"ds-slider\" role=\"slider\" aria-label=\"Horizontal stretch\" tabindex=\"0\"><i class=\"ds-slider-fill\"></i><b class=\"ds-slider-thumb\"></b></div></section>",
+      "css": ".ds-tool-palette { position: absolute; top: 16px; right: 52px; display: flex; flex-direction: column; width: 264px; max-height: max(100px, calc(100vh - 108px)); overflow-y: auto; padding: 12px; border-radius: 12px; background: #111111f5; color: #e8e8e8; font: 12px Geist, sans-serif; backdrop-filter: blur(16px); } .ds-tool-caption { color: #a8a8a8; } .ds-tool-select { display: flex; align-items: center; justify-content: space-between; width: 100%; height: 28px; margin-top: 4px; margin-bottom: 8px; padding: 0 8px; border: 0; border-radius: 6px; background: rgba(255,255,255,0.035); color: #e8e8e8; font: inherit; } .ds-tool-select:hover, .ds-tool-select[aria-pressed=\"true\"] { background: rgba(255,255,255,0.11); } .ds-tool-select:focus-visible, .ds-slider:focus-visible { outline: 1px solid #a5a0ff; outline-offset: 0; } .ds-tool-select svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; } .ds-slider-label { display: flex; justify-content: space-between; } .ds-slider-value { color: #a8a8a8; } .ds-slider { position: relative; width: 100%; height: 20px; padding: 0 4px; } .ds-slider::before { position: absolute; left: 0; right: 0; top: 9px; height: 2px; background: #4b4d55; content: \"\"; } .ds-slider-fill { position: absolute; left: 0; top: 9px; width: 50%; height: 2px; background: #a5a0ff; } .ds-slider-thumb { position: absolute; left: 50%; top: 4px; margin-left: -4px; width: 8px; height: 12px; border-radius: 2px; background: #cdced4; }"
+    },
+    {
+      "name": "Android Material 3 primary action",
+      "kind": "button",
+      "refersTo": "android-primary-button",
+      "description": "Native full-width contained action with Android's minimum touch target.",
+      "html": "<button class=\"ds-android-primary\" type=\"button\">Enable connection</button>",
+      "css": ".ds-android-primary { display: block; width: 100%; min-height: 48px; padding: 0 20px; border: 0; border-radius: 24px; background: #a5a0ff; color: #060606; font: 14px Geist, sans-serif; } .ds-android-primary:hover { filter: brightness(1.04); } .ds-android-primary:focus-visible { outline: 2px solid #a5a0ff; outline-offset: 2px; } .ds-android-primary:disabled { opacity: 0.38; }"
+    },
+    {
+      "name": "Android outlined password field",
+      "kind": "input",
+      "refersTo": "android-password-field",
+      "description": "Material 3 outlined field with a persistent label and native visibility toggle.",
+      "html": "<label class=\"ds-android-field\"><span>Password</span><input type=\"password\" value=\"password\" aria-label=\"Password\"><small>8–128 characters</small></label>",
+      "css": ".ds-android-field { display: block; color: #e8e8e8; font: 14px Geist, sans-serif; } .ds-android-field span { display: block; margin-bottom: -8px; padding: 0 4px; width: max-content; background: #060606; color: #a5a0ff; font-size: 12px; } .ds-android-field input { box-sizing: border-box; width: 100%; height: 56px; padding: 0 12px; border: 1px solid #626262; border-radius: 4px; background: transparent; color: #e8e8e8; font: inherit; } .ds-android-field input:focus-visible { border: 2px solid #a5a0ff; outline: 0; } .ds-android-field small { display: block; margin: 4px 12px 0; color: #a8a8a8; font-size: 12px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Live Camera Instrument",
+    "overview": "OpenCam treats the live camera image as the main work surface. The desktop uses Zui and gpui-base in the pinned Zeron visual language: near-black planes, compact labeled controls, separate vertical action and tool rails, and one floating palette for the selected tool. Camera content stays clear while supported floating menus receive a restrained frost treatment.\n\nThe Android companion keeps the same neutral palette and Geist family through native Material 3 Views. It is a single, full-width control screen without a redundant app-name toolbar; Android text scaling and scrolling take precedence over desktop density.",
+    "keyCharacteristics": [
+      "Direct preview first, controls kept to the edges.",
+      "One lavender accent for desktop selection and focus, and the Android primary action.",
+      "Native desktop controls and native Material 3 companion controls."
+    ],
+    "rules": [
+      {
+        "name": "The One-Accent Rule",
+        "body": "Use the lavender for desktop selection and focus, and for the Android primary action; let the live image hold the visual attention.",
+        "section": "colors"
+      },
+      {
+        "name": "The Label-First Rule",
+        "body": "Keep desktop labels at the inherited 12px scale and reserve mono type for live measurements.",
+        "section": "typography"
+      },
+      {
+        "name": "The Open-Frame Rule",
+        "body": "Keep the preview flexible, with two slim rails and only the selected tool floating over it.",
+        "section": "layout"
+      }
+    ],
+    "dos": [
+      "Do keep the live preview at the center and let it fill the available desktop space.",
+      "Do use the supplied Zeron and Solar SVG assets for their applicable controls.",
+      "Do keep Android controls at their native 48dp minimum while allowing large text to scroll.",
+      "Do keep labels concise and make each icon action accessible by name."
+    ],
+    "donts": [
+      "Don't add a permanent settings wall, fixed bottom dock, or redundant app-name toolbar.",
+      "Don't add headings or explanatory copy when a direct control label already explains the action.",
+      "Don't substitute handmade glyphs, emoji, or text symbols for the shipped vector icons.",
+      "Don't add ornamental animation to camera controls or preview surfaces.",
+      "Don't blur, crop, or paint decorative imagery over the camera preview.",
+      "Don't treat synthetic fixture bars in review captures as the product palette or a real camera feed."
+    ]
+  }
+}
