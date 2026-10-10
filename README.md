@@ -2,6 +2,16 @@
 
 Open-source Android Camera2 webcam studio. Native Rust/Zui desktop, native Android Material3 companion, USB and encrypted Wi-Fi, hardware H.264/HEVC or uncompressed YUV420/RGBA, automatic transport-format benchmarking and connection recovery. MIT-licensed source.
 
+<!-- derpcat-support -->
+<p align="center">
+  <a href="https://www.patreon.com/derpcatmusic">
+    <img src=".github/support-derpcat.svg" alt="Donate to Derpcat on Patreon — support my open-source work and help me keep building and maintaining free tools." width="800">
+  </a>
+  <br>
+  <a href="https://www.patreon.com/derpcatmusic"><strong>❤️ Support me on Patreon</strong></a>
+</p>
+<!-- /derpcat-support -->
+
 [Source](https://github.com/DerpcatMusic/OpenCam) · [Downloads](https://github.com/DerpcatMusic/OpenCam/releases) · [Builds](https://github.com/DerpcatMusic/OpenCam/actions/workflows/build.yml)
 
 ![OpenCam native desktop, with a synthetic test stream](docs/desktop.png)
