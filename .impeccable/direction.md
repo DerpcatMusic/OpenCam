@@ -30,9 +30,12 @@ captures plus native Android phone capture form the verification matrix.
 Native Android Views companion: the same dark palette and Geist family through
 Material 3 controls, with a contained full-screen local preview, live resolution/FPS
 status, a right-side tool rail, and one scrollable bottom palette for the selected
-tool. Camera/focus, format, sensor, phone effects, and connection settings open from
-separate tools. The connection palette retains Enable/Disable, the selectable and
-copyable pairing URI, live status, and optional password protection. Camera preview
+tool. Camera/focus, format, sensor and phone effects open from four vertical icons.
+A compact tappable connection chip opens availability and password settings;
+the resolution/FPS readout opens format controls. Discovery starts automatically
+in the foreground, without an Enable connection action. The pairing URI is copied
+through a vector clipboard button and never printed over the camera. A central
+permission/retry action is shown only when the camera is unavailable. Camera preview
 can run without the stream encoder; the encoder runs only during desktop streaming.
 When phone processing is selected, the same GLES-processed frames feed the local
 preview and encoder. Desktop-side effects do not return video to the phone; changing

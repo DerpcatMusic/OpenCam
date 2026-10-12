@@ -18,9 +18,9 @@ import org.json.JSONObject;
 public final class MainActivity extends AppCompatActivity implements Bridge.Listener {
     Bridge bridge;
     CameraController controller;
-    TextView status, pairing;
-    Button start, copy;
-    MaterialSwitch protect;
+    TextView connectionDetail;
+    Button status, copy, format, cameraAccess, savePassword;
+    MaterialSwitch protect, available;
     TextInputLayout passwordField;
     EditText password;
     TextureView preview;
@@ -29,7 +29,8 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
     volatile JSONObject settings, catalog;
     volatile long revision;
     int selectedTool = -1;
-    boolean resumed, enableAfterPermission;
+    boolean resumed, streaming;
+    String pairing = "";
     JSONObject previewInfo;
     final android.hardware.display.DisplayManager.DisplayListener displays = new android.hardware.display.DisplayManager.DisplayListener() {
         public void onDisplayAdded(int id) { }
@@ -55,8 +56,8 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         getSystemService(android.hardware.display.DisplayManager.class).registerDisplayListener(displays, new android.os.Handler(getMainLooper()));
         controls = new CameraControls(this, findViewById(R.id.camera_controls), this::apply, this::status,()->{CameraController active=controller;if(active!=null)active.local(Json.object("type","raw"));});
         LinearLayout rail = findViewById(R.id.tools);
-        int[] icons = {R.drawable.ic_camera, R.drawable.ic_video, R.drawable.ic_settings, R.drawable.ic_effects, R.drawable.ic_wifi};
-        String[] labels = {"Camera and focus", "Resolution and frame rate", "Sensor controls", "Phone effects", "Connection"};
+        int[] icons = {R.drawable.ic_camera, R.drawable.ic_video, R.drawable.ic_settings, R.drawable.ic_effects};
+        String[] labels = {"Camera and focus", "Resolution and frame rate", "Sensor controls", "Phone effects"};
         for (int i = 0; i < icons.length; i++) {
             final int index = i;
             var button = CameraControls.icon(this, icons[i], labels[i]);
@@ -77,38 +78,55 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             public void handleOnBackPressed() { if (selectedTool >= 0) select(-1); else { setEnabled(false); getOnBackPressedDispatcher().onBackPressed(); } }
         });
         if (state != null && state.containsKey("camera-settings")) try { settings = new JSONObject(state.getString("camera-settings")); } catch (Exception ignored) { }
-        enableAfterPermission = state != null && state.getBoolean("enable-after-permission");
         status = findViewById(R.id.status);
-        pairing = findViewById(R.id.pairing);
+        connectionDetail = findViewById(R.id.connection_detail);
+        format = findViewById(R.id.format);
+        cameraAccess = findViewById(R.id.camera_access);
+        savePassword = findViewById(R.id.save_password);
+        available = findViewById(R.id.available);
         protect = findViewById(R.id.protect);
         password = findViewById(R.id.password);
         passwordField = findViewById(R.id.password_field);
-        start = findViewById(R.id.start);
         copy = findViewById(R.id.copy);
+        available.setChecked(getPreferences(MODE_PRIVATE).getBoolean("available",true));
         protect.setChecked(getPreferences(MODE_PRIVATE).getBoolean("protect",false));
         passwordField.setVisibility(protect.isChecked() ? View.VISIBLE : View.GONE);
+        savePassword.setVisibility(protect.isChecked() ? View.VISIBLE : View.GONE);
         if (getPreferences(MODE_PRIVATE).contains("password-key")) passwordField.setPlaceholderText("Saved password");
+        available.setOnCheckedChangeListener((button,checked) -> {
+            disable(); getPreferences(MODE_PRIVATE).edit().putBoolean("available",checked).apply();
+            if (checked) resumeCamera();
+            refreshStatus();
+        });
         protect.setOnCheckedChangeListener((button,checked) -> {
             disable(); getPreferences(MODE_PRIVATE).edit().putBoolean("protect",checked).apply();
             passwordField.setVisibility(checked ? View.VISIBLE : View.GONE);
+            savePassword.setVisibility(checked ? View.VISIBLE : View.GONE);
+            if (!checked) password.setText("");
+            enable(); refreshStatus(); sizePanel();
         });
         password.addTextChangedListener(new android.text.TextWatcher() {
             public void beforeTextChanged(CharSequence s,int start,int count,int after) { }
-            public void onTextChanged(CharSequence s,int start,int before,int count) { if (bridge != null) disable(); }
+            public void onTextChanged(CharSequence s,int start,int before,int count) { if (bridge != null) disable(); passwordField.setError(null); refreshStatus(); }
             public void afterTextChanged(android.text.Editable s) { }
         });
-        start.setOnClickListener(v -> {
-            if (bridge != null) disable();
-            else if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                enableAfterPermission = true;
-                requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
-            }
-            else enable();
+        status.setOnClickListener(v -> select(selectedTool == 4 ? -1 : 4));
+        format.setOnClickListener(v -> select(selectedTool == 1 ? -1 : 1));
+        cameraAccess.setOnClickListener(v -> requestCamera());
+        savePassword.setOnClickListener(v -> {
+            try {
+                byte[] salt = Auth.random(16), key = Auth.derive(password.getText().toString(),salt);
+                disable();
+                getPreferences(MODE_PRIVATE).edit().putString("password-salt",Bridge.hex(salt)).putString("password-key",Bridge.hex(key)).apply();
+                password.setText(""); passwordField.setPlaceholderText("Saved password");
+                ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(password.getWindowToken(),0);
+                enable();
+            } catch (Exception e) { passwordField.setError(e.getMessage()); sizePanel(); }
         });
         copy.setOnClickListener(v -> {
             ClipboardManager clipboard = getSystemService(ClipboardManager.class);
-            clipboard.setPrimaryClip(ClipData.newPlainText("OpenCam pairing", pairing.getText()));
-            status.setText("Pairing link copied");
+            clipboard.setPrimaryClip(ClipData.newPlainText("OpenCam pairing", pairing));
+            com.google.android.material.snackbar.Snackbar.make(content,"Pairing link copied",com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show();
         });
     }
 
@@ -122,44 +140,64 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
     }
 
     void enable() {
+        if (!resumed || bridge != null || !available.isChecked() || checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return;
         try {
             camera();
             if (controller == null) throw new IllegalStateException("Enable camera permission first");
             Auth.Credential credential = null;
             if (protect.isChecked()) {
-                String value = password.getText().toString();
                 var prefs = getPreferences(MODE_PRIVATE);
-                if (!value.isEmpty()) {
-                    byte[] salt = Auth.random(16), key = Auth.derive(value,salt);
-                    prefs.edit().putString("password-salt",Bridge.hex(salt)).putString("password-key",Bridge.hex(key)).apply();
-                    credential = new Auth.Credential(salt,key);
-                } else if (prefs.contains("password-key")) {
-                    credential = new Auth.Credential(Auth.unhex(prefs.getString("password-salt",""),16),Auth.unhex(prefs.getString("password-key",""),32));
-                } else throw new IllegalArgumentException("Set a password before enabling the connection");
+                if (password.length() > 0 || !prefs.contains("password-key")) { refreshStatus(); return; }
+                credential = new Auth.Credential(Auth.unhex(prefs.getString("password-salt",""),16),Auth.unhex(prefs.getString("password-key",""),32));
             }
             bridge = new Bridge(this, this, credential);
             controller.attach(bridge);
-            pairing.setText("opencam://" + address() + ":" + Bridge.PORT + "?token=" + bridge.token + "&pin=" + bridge.fingerprint);
-            copy.setEnabled(true); start.setText("Disable connection");
-            status.setText("Ready · " + (protect.isChecked() ? "password required" : "open on local network") + " · " + catalog.getJSONArray("cameras").length() + " camera paths");
-        } catch (Exception e) { disable(); status.setText("Could not enable camera: " + e.getMessage()); }
+            String endpoint = address() + ":" + Bridge.PORT;
+            pairing = "opencam://" + endpoint + "?token=" + bridge.token + "&pin=" + bridge.fingerprint;
+            connectionDetail.setText(endpoint); refreshStatus();
+        } catch (Exception e) { disable(); status("Connection failed: " + e.getMessage()); }
     }
 
     void disable() {
         if (bridge != null) { bridge.close(); bridge = null; }
         if (controller != null) controller.attach(null);
-        if (start != null) { start.setText("Enable connection"); copy.setEnabled(false); pairing.setText(""); status.setText("Local preview · connection off"); }
+        pairing = ""; streaming = false;
+        if (copy != null) { connectionDetail.setText(""); refreshStatus(); }
+    }
+
+    void refreshStatus() {
+        if (status == null) return;
+        boolean cameraAllowed = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+        boolean paired = bridge != null && bridge.peer != null && bridge.peer.alive;
+        String label = !cameraAllowed || controller == null ? "No camera" : !available.isChecked() ? "Offline" :
+            bridge == null ? (protect.isChecked() ? "Set password" : "Offline") : paired ? (streaming ? "Live" : "Connected") : "No desktop";
+        status.setText(label); status.setContentDescription(label + ", connection settings");
+        copy.setEnabled(bridge != null);
+        cameraAccess.setVisibility(controller == null ? View.VISIBLE : View.GONE);
+        cameraAccess.setText(cameraAllowed ? "Retry camera" : "Allow camera");
+        format.setVisibility(controller != null && settings != null && selectedTool < 0 ? View.VISIBLE : View.GONE);
+    }
+
+    void requestCamera() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) resumeCamera();
+        else if (getPreferences(MODE_PRIVATE).getBoolean("asked-camera", false) && !shouldShowRequestPermissionRationale(Manifest.permission.CAMERA))
+            startActivity(new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:" + getPackageName())));
+        else { getPreferences(MODE_PRIVATE).edit().putBoolean("asked-camera",true).apply(); requestPermissions(new String[]{Manifest.permission.CAMERA},1); }
     }
 
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
         if (request != 1) return;
         if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) resumeCamera();
-        else { enableAfterPermission = false; status.setText("Camera permission is needed. Enable it in Android app settings, then try again."); }
+        else { disable(); refreshStatus(); }
     }
     @Override public void command(JSONObject command) { CameraController c = controller; if (c != null) c.command(command); }
-    @Override public void disconnected() { CameraController c = controller; if (c != null) c.handler.post(() -> { try { if (c.current != null && c.streaming) c.configure(c.current, false); } catch (Exception e) { c.fail(e); } }); }
-    @Override public void status(String value) { runOnUiThread(() -> { if (status != null) status.setText(value); }); }
+    @Override public void disconnected() { runOnUiThread(() -> { streaming = false; refreshStatus(); }); CameraController c = controller; if (c != null) c.handler.post(() -> { try { if (c.current != null && c.streaming) c.configure(c.current, false); } catch (Exception e) { c.fail(e); } }); }
+    @Override public void status(String value) { runOnUiThread(() -> {
+        if (!resumed || connectionDetail == null) return;
+        connectionDetail.setText(value); refreshStatus();
+        if (selectedTool != 4) com.google.android.material.snackbar.Snackbar.make(findViewById(R.id.content),value,com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show();
+    }); }
     @Override public void onResume() {
         super.onResume(); resumed = true;
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) resumeCamera();
@@ -167,6 +205,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             getPreferences(MODE_PRIVATE).edit().putBoolean("asked-camera", true).apply();
             requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
         }
+        refreshStatus();
     }
     @Override public void onPause() {
         resumed = false;
@@ -174,14 +213,13 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         disable(); super.onPause();
     }
     @Override public void onSaveInstanceState(Bundle out) {
-        out.putBoolean("enable-after-permission", enableAfterPermission);
         if (settings != null) out.putString("camera-settings", settings.toString()); super.onSaveInstanceState(out);
     }
 
     void resumeCamera() {
         if (!resumed) return;
         camera();
-        if (enableAfterPermission) { enableAfterPermission = false; enable(); }
+        enable(); refreshStatus();
     }
     void camera() {
         if (!resumed || controller != null) return;
@@ -203,14 +241,17 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
                 }
                 switch (event.optString("type")) {
                     case "preview", "configured", "controls", "state" -> {
-                        status.setText(event.optBoolean("conflict") ? "Settings changed on the other device · try again" :
-                            (event.optBoolean("streaming") ? "Streaming" : "Local preview") + " · " + settings.optInt("width") + " × " + settings.optInt("height") + " · " + settings.optInt("fps") + " fps");
+                        streaming = event.optBoolean("streaming");
+                        format.setText(settings.optInt("width") + " × " + settings.optInt("height") + " · " + settings.optInt("fps") + " fps");
+                        format.setContentDescription(format.getText() + ", resolution and frame rate");
+                        refreshStatus();
+                        if (event.optBoolean("conflict")) status("Settings changed on the other device · try again");
                     }
-                    case "error" -> { status.setText(event.optString("message")); if (settings != null) controls.state(catalog, settings, selectedTool); }
-                    case "raw_saved", "raw_transfer_error" -> status.setText(event.optString("message"));
+                    case "error" -> { status(event.optString("message")); if (settings != null) controls.state(catalog, settings, selectedTool); }
+                    case "raw_saved", "raw_transfer_error" -> status(event.optString("message"));
                 }
                 sizePanel();
-            } catch (Exception e) { status.setText(e.getMessage()); }
+            } catch (Exception e) { status(e.getMessage()); }
         });
     }
     void apply(JSONObject values, boolean configure) {
@@ -234,8 +275,8 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         findViewById(R.id.camera_controls).setVisibility(tool < 4 ? View.VISIBLE : View.GONE);
         if (settings != null) controls.state(catalog, settings, tool);
         if (tool < 4 && tool >= 0 && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
-            requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
-        panel.scrollTo(0, 0); sizePanel();
+            requestCamera();
+        refreshStatus(); panel.scrollTo(0, 0); sizePanel();
     }
     void sizePanel() {
         if (panel == null || findViewById(R.id.content).getHeight() == 0) return;

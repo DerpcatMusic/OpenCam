@@ -30,7 +30,7 @@ No attached phone is currently available for hardware verification. No comparati
 ## Product Principles
 - Actual device capabilities drive every camera option.
 - Recent frames take priority over accumulating a preview backlog.
-- Camera access starts explicitly and stops with the companion's lifecycle.
+- Camera preview and local discovery start after camera permission while the companion is foregrounded; camera and listener stop when backgrounded. Desktop availability can be switched off without stopping local preview.
 - No cloud, subscriptions, analytics or hardcoded Nothing camera IDs.
 
 ## Open Decisions
