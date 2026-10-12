@@ -291,7 +291,8 @@ public final class ProcessingTest extends Instrumentation {
                 require(time==pts && position==offset && total==expected,"Uncompressed chunks were not contiguous");offset+=length-20;
             }
             require(offset==expected && activity.controller.encoder==null,"Uncompressed stream did not bypass encoder");
-            write(output,Json.object("type","ping","sent",42));require(event(input,"pong").getInt("sent")==42,"Video blocked heartbeat");
+            write(output,Json.object("type","ping","sent",42));
+            event(input,"pong",reply -> reply.optInt("sent",-1)==42);
             checks.put(codec,Json.object("frameBytes",expected,"encoderBypassed",true,"heartbeatDuringVideo",true));
         }
     }
@@ -316,11 +317,14 @@ public final class ProcessingTest extends Instrumentation {
         synchronized (output) { output.writeByte(1); output.writeInt(bytes.length); output.write(bytes); output.flush(); }
     }
     JSONObject event(java.io.DataInputStream input, String type) throws Exception {
+        return event(input,type,reply -> true);
+    }
+    JSONObject event(java.io.DataInputStream input, String type, java.util.function.Predicate<JSONObject> matches) throws Exception {
         for (int i=0;i<100;i++) {
             int kind=input.readUnsignedByte(), size=input.readInt(); require(size>0 && size<=Bridge.MAX_PACKET, "Invalid native packet size");
             byte[] bytes=new byte[size]; input.readFully(bytes); if (kind!=1) continue;
             JSONObject event=new JSONObject(new String(bytes,java.nio.charset.StandardCharsets.UTF_8));
-            if (event.optString("type").equals(type)) return event;
+            if (event.optString("type").equals(type) && matches.test(event)) return event;
             if (event.optString("type").equals("error")) throw new AssertionError(event.optString("message"));
         }
         throw new AssertionError("Missing event: " + type);
