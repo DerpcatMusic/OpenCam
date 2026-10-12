@@ -17,6 +17,7 @@ Send camera video over USB and encrypted Wi-Fi, provide a local Android preview,
 
 ## Operating Context
 All three desktop platforms were explicitly requested. Low latency and throughput are the priority. The exact phone model remains unconfirmed.
+The user confirmed mounted and handheld phone use are equally important. Support both portrait and landscape: readiness must remain legible when mounted, and labeled adjustments must stay reachable when handheld.
 
 ## Capabilities and Constraints
 Camera2 enumeration includes front, rear, logical and physical lenses, editable sensor resolution and FPS, manual exposure/focus/white balance/stabilization and ISP modes where supported, RAW stills and full capability export. Phone-side native EGL/GLES stretch, fit/crop, radial/local distortion, rotate/mirror and optional bounded person segmentation/background blur. Prefer direct sensor/ISP controls; bypass GPU and ML when effects are off.
