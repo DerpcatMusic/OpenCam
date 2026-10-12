@@ -1,0 +1,11 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+ android:id="@+id/tools" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical">
+ <com.google.android.material.button.MaterialButton android:id="@+id/tool_camera" style="@style/Widget.OpenCam.Tool.Wide"
+  android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/camera" app:icon="@drawable/ic_camera" />
+ <com.google.android.material.button.MaterialButton android:id="@+id/tool_video" style="@style/Widget.OpenCam.Tool.Wide"
+  android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_compact" android:text="@string/video" app:icon="@drawable/ic_video" />
+ <com.google.android.material.button.MaterialButton android:id="@+id/tool_sensor" style="@style/Widget.OpenCam.Tool.Wide"
+  android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_compact" android:text="@string/exposure" app:icon="@drawable/ic_settings" />
+ <com.google.android.material.button.MaterialButton android:id="@+id/tool_effects" style="@style/Widget.OpenCam.Tool.Wide"
+  android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_compact" android:text="@string/effects" app:icon="@drawable/ic_effects" />
+</LinearLayout>

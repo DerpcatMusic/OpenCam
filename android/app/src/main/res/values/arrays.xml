@@ -1,0 +1,9 @@
+<resources>
+    <string-array name="white_balance_modes">
+        <item>Manual gains</item><item>Auto</item><item>Incandescent</item><item>Fluorescent</item>
+        <item>Warm fluorescent</item><item>Daylight</item><item>Cloudy</item><item>Twilight</item><item>Shade</item>
+    </string-array>
+    <string-array name="processing_modes">
+        <item>Off</item><item>Fast</item><item>High quality</item><item>Minimal</item><item>Zero-shutter-lag</item>
+    </string-array>
+</resources>

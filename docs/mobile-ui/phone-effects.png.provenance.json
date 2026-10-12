@@ -1,0 +1,37 @@
+{
+  "origin": "native-device-capture",
+  "device": "Android API36 google_apis x86_64 emulator (OpenCam_API36)",
+  "capture": "adb -s emulator-5580 exec-out screencap -p",
+  "syntheticCamera": true,
+  "pixelEdits": false,
+  "embeddedOriginMetadata": true,
+  "sha256": "2ff6be440365650c225b9533e17db20d0a0009696e4ac40d93ca6be2780361b8",
+  "configuration": {
+    "name": "phone-effects",
+    "state": "effects sheet",
+    "nodes": {
+      "panel": {
+        "bounds": [
+          0,
+          891,
+          1080,
+          2337
+        ],
+        "text": "",
+        "description": ""
+      },
+      "close_settings": {
+        "bounds": [
+          903,
+          756,
+          1038,
+          891
+        ],
+        "text": "",
+        "description": "Close settings"
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420"
+  }
+}

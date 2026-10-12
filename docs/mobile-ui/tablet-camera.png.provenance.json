@@ -1,0 +1,37 @@
+{
+  "origin": "native-device-capture",
+  "device": "Android API36 google_apis x86_64 emulator (OpenCam_API36)",
+  "capture": "adb -s emulator-5580 exec-out screencap -p",
+  "syntheticCamera": true,
+  "pixelEdits": false,
+  "embeddedOriginMetadata": true,
+  "sha256": "3877ee650b1c6b90b10a774fc47cb6eb8b8064aa7c0b2ddeb10d29f0b53bfc41",
+  "configuration": {
+    "name": "tablet-camera",
+    "state": "camera sheet",
+    "nodes": {
+      "panel": {
+        "bounds": [
+          120,
+          1326,
+          1080,
+          1872
+        ],
+        "text": "",
+        "description": ""
+      },
+      "close_settings": {
+        "bounds": [
+          978,
+          1248,
+          1056,
+          1326
+        ],
+        "text": "",
+        "description": "Close settings"
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420\nOverride density: 240"
+  }
+}

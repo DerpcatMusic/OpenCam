@@ -1,0 +1,716 @@
+[
+  {
+    "name": "phone-dark",
+    "state": "home",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          42,
+          181,
+          386,
+          239
+        ],
+        "text": "Ready to connect",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          631,
+          178,
+          1038,
+          304
+        ],
+        "text": "Connection",
+        "description": "Ready to connect. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          42,
+          346,
+          1038,
+          1904
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          205,
+          2022,
+          547,
+          2148
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          568,
+          2022,
+          876,
+          2148
+        ],
+        "text": "Video",
+        "description": "1280 \u00d7 720 \u00b7 30 fps. Open video settings."
+      },
+      "tool_sensor": {
+        "bounds": [
+          181,
+          2169,
+          550,
+          2295
+        ],
+        "text": "Exposure",
+        "description": ""
+      },
+      "tool_effects": {
+        "bounds": [
+          571,
+          2169,
+          900,
+          2295
+        ],
+        "text": "Effects",
+        "description": ""
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420"
+  },
+  {
+    "name": "phone-camera",
+    "state": "camera sheet",
+    "nodes": {
+      "panel": {
+        "bounds": [
+          0,
+          1382,
+          1080,
+          2337
+        ],
+        "text": "",
+        "description": ""
+      },
+      "close_settings": {
+        "bounds": [
+          903,
+          1247,
+          1038,
+          1382
+        ],
+        "text": "",
+        "description": "Close settings"
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420"
+  },
+  {
+    "name": "phone-video",
+    "state": "video sheet",
+    "nodes": {
+      "panel": {
+        "bounds": [
+          0,
+          397,
+          1080,
+          2337
+        ],
+        "text": "",
+        "description": ""
+      },
+      "close_settings": {
+        "bounds": [
+          903,
+          262,
+          1038,
+          397
+        ],
+        "text": "",
+        "description": "Close settings"
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420"
+  },
+  {
+    "name": "phone-exposure",
+    "state": "exposure sheet",
+    "nodes": {
+      "panel": {
+        "bounds": [
+          0,
+          767,
+          1080,
+          2337
+        ],
+        "text": "",
+        "description": ""
+      },
+      "close_settings": {
+        "bounds": [
+          903,
+          632,
+          1038,
+          767
+        ],
+        "text": "",
+        "description": "Close settings"
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420"
+  },
+  {
+    "name": "phone-effects",
+    "state": "effects sheet",
+    "nodes": {
+      "panel": {
+        "bounds": [
+          0,
+          891,
+          1080,
+          2337
+        ],
+        "text": "",
+        "description": ""
+      },
+      "close_settings": {
+        "bounds": [
+          903,
+          756,
+          1038,
+          891
+        ],
+        "text": "",
+        "description": "Close settings"
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420"
+  },
+  {
+    "name": "phone-light",
+    "state": "home",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          42,
+          181,
+          386,
+          239
+        ],
+        "text": "Ready to connect",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          631,
+          178,
+          1038,
+          304
+        ],
+        "text": "Connection",
+        "description": "Ready to connect. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          42,
+          346,
+          1038,
+          1904
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          205,
+          2022,
+          547,
+          2148
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          568,
+          2022,
+          876,
+          2148
+        ],
+        "text": "Video",
+        "description": "1280 \u00d7 720 \u00b7 30 fps. Open video settings."
+      },
+      "tool_sensor": {
+        "bounds": [
+          181,
+          2169,
+          550,
+          2295
+        ],
+        "text": "Exposure",
+        "description": ""
+      },
+      "tool_effects": {
+        "bounds": [
+          571,
+          2169,
+          900,
+          2295
+        ],
+        "text": "Effects",
+        "description": ""
+      }
+    },
+    "font_scale": "1",
+    "density": "Physical density: 420"
+  },
+  {
+    "name": "phone-landscape",
+    "state": "home",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          178,
+          119,
+          522,
+          177
+        ],
+        "text": "Ready to connect",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          1951,
+          116,
+          2358,
+          242
+        ],
+        "text": "Connection",
+        "description": "Ready to connect. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          178,
+          284,
+          1947,
+          975
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          1989,
+          360,
+          2358,
+          486
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          1989,
+          507,
+          2358,
+          633
+        ],
+        "text": "Video",
+        "description": "1280 \u00d7 720 \u00b7 30 fps. Open video settings."
+      },
+      "tool_sensor": {
+        "bounds": [
+          1989,
+          654,
+          2358,
+          780
+        ],
+        "text": "Exposure",
+        "description": ""
+      },
+      "tool_effects": {
+        "bounds": [
+          1989,
+          801,
+          2358,
+          927
+        ],
+        "text": "Effects",
+        "description": ""
+      }
+    },
+    "font_scale": "1",
+    "density": "Physical density: 420"
+  },
+  {
+    "name": "small-phone-large-text",
+    "state": "home",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          54,
+          163,
+          829,
+          293
+        ],
+        "text": "Ready to connect",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          54,
+          454,
+          787,
+          640
+        ],
+        "text": "Connection",
+        "description": "Ready to connect. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          54,
+          694,
+          1026,
+          1159
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          248,
+          1364,
+          832,
+          1550
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          291,
+          1577,
+          790,
+          1763
+        ],
+        "text": "Video",
+        "description": "1280 \u00d7 720 \u00b7 30 fps. Open video settings."
+      }
+    },
+    "font_scale": "2.0",
+    "density": "Physical density: 420\nOverride density: 540"
+  },
+  {
+    "name": "small-phone-keyboard-error",
+    "state": "connection sheet with keyboard and invalid password",
+    "nodes": {
+      "panel": {
+        "bounds": [
+          0,
+          319,
+          1080,
+          965
+        ],
+        "text": "",
+        "description": ""
+      },
+      "password": {
+        "bounds": [
+          81,
+          356,
+          999,
+          600
+        ],
+        "text": "short",
+        "description": ""
+      },
+      "save_password": {
+        "bounds": [
+          81,
+          883,
+          999,
+          965
+        ],
+        "text": "Save password",
+        "description": ""
+      },
+      "close_settings": {
+        "bounds": [
+          851,
+          109,
+          1026,
+          319
+        ],
+        "text": "",
+        "description": "Close settings"
+      }
+    },
+    "font_scale": "2.0",
+    "density": "Physical density: 420\nOverride density: 540"
+  },
+  {
+    "name": "tablet",
+    "state": "home",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          24,
+          134,
+          248,
+          168
+        ],
+        "text": "Save your password",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          946,
+          133,
+          1176,
+          205
+        ],
+        "text": "Connection",
+        "description": "Save your password. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          24,
+          229,
+          940,
+          1848
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          964,
+          273,
+          1176,
+          345
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          964,
+          357,
+          1176,
+          429
+        ],
+        "text": "Video",
+        "description": "1280 \u00d7 720 \u00b7 30 fps. Open video settings."
+      },
+      "tool_sensor": {
+        "bounds": [
+          964,
+          441,
+          1176,
+          513
+        ],
+        "text": "Exposure",
+        "description": ""
+      },
+      "tool_effects": {
+        "bounds": [
+          964,
+          525,
+          1176,
+          597
+        ],
+        "text": "Effects",
+        "description": ""
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420\nOverride density: 240"
+  },
+  {
+    "name": "tablet-camera",
+    "state": "camera sheet",
+    "nodes": {
+      "panel": {
+        "bounds": [
+          120,
+          1326,
+          1080,
+          1872
+        ],
+        "text": "",
+        "description": ""
+      },
+      "close_settings": {
+        "bounds": [
+          978,
+          1248,
+          1056,
+          1326
+        ],
+        "text": "",
+        "description": "Close settings"
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420\nOverride density: 240"
+  },
+  {
+    "name": "phone-permission",
+    "state": "permission denied recovery",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          42,
+          181,
+          501,
+          239
+        ],
+        "text": "Camera access needed",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          631,
+          178,
+          1038,
+          304
+        ],
+        "text": "Connection",
+        "description": "Camera access needed. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          42,
+          346,
+          1038,
+          1980
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          205,
+          2022,
+          547,
+          2148
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          568,
+          2022,
+          876,
+          2148
+        ],
+        "text": "Video",
+        "description": ""
+      },
+      "tool_sensor": {
+        "bounds": [
+          181,
+          2169,
+          550,
+          2295
+        ],
+        "text": "Exposure",
+        "description": ""
+      },
+      "tool_effects": {
+        "bounds": [
+          571,
+          2169,
+          900,
+          2295
+        ],
+        "text": "Effects",
+        "description": ""
+      }
+    },
+    "font_scale": "1",
+    "density": "Physical density: 420"
+  },
+  {
+    "name": "phone-rtl",
+    "state": "forced RTL with English labels; mirrored configuration after reboot",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          694,
+          181,
+          1038,
+          239
+        ],
+        "text": "Ready to connect",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          42,
+          178,
+          449,
+          304
+        ],
+        "text": "Connection",
+        "description": "Ready to connect. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          42,
+          346,
+          1038,
+          1904
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          534,
+          2022,
+          876,
+          2148
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          205,
+          2022,
+          513,
+          2148
+        ],
+        "text": "Video",
+        "description": "1280 \u00d7 720 \u00b7 30 fps. Open video settings."
+      },
+      "tool_sensor": {
+        "bounds": [
+          531,
+          2169,
+          900,
+          2295
+        ],
+        "text": "Exposure",
+        "description": ""
+      },
+      "tool_effects": {
+        "bounds": [
+          181,
+          2169,
+          510,
+          2295
+        ],
+        "text": "Effects",
+        "description": ""
+      }
+    },
+    "font_scale": "1",
+    "density": "Physical density: 420"
+  }
+]

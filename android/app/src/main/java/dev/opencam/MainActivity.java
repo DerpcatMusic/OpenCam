@@ -11,6 +11,13 @@ import android.hardware.camera2.CameraManager;
 import android.os.Bundle;
 import android.view.*;
 import android.widget.*;
+import androidx.core.widget.NestedScrollView;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
+import com.google.android.material.color.DynamicColors;
 import java.net.*;
 import java.util.*;
 import org.json.JSONObject;
@@ -18,18 +25,28 @@ import org.json.JSONObject;
 public final class MainActivity extends AppCompatActivity implements Bridge.Listener {
     Bridge bridge;
     CameraController controller;
-    TextView connectionDetail;
+    TextView connectionDetail, connectionState, cameraState, sheetTitle, emptyTitle, emptyDetail, videoSummary;
+    View cameraEmpty, sheetRoot, passwordHelp, connectionControlsView, cameraControlsView;
+    BottomSheetDialog sheet;
+    Button discardPassword;
+    int restoredTool = -1, restoredScroll;
+    String cameraFailure;
+    PasswordDraft passwordDraft;
+    public static final class PasswordDraft extends androidx.lifecycle.ViewModel {
+        String value = "";
+        @Override protected void onCleared() { value = ""; }
+    }
     Button status, copy, format, cameraAccess, savePassword;
     MaterialSwitch protect, available;
     TextInputLayout passwordField;
     EditText password;
     TextureView preview;
-    ScrollView panel;
+    NestedScrollView panel;
     CameraControls controls;
     volatile JSONObject settings, catalog;
     volatile long revision;
     int selectedTool = -1;
-    boolean resumed, streaming;
+    boolean resumed, streaming, previewReady;
     String pairing = "";
     JSONObject previewInfo;
     final android.hardware.display.DisplayManager.DisplayListener displays = new android.hardware.display.DisplayManager.DisplayListener() {
@@ -40,31 +57,61 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
     final java.util.List<com.google.android.material.button.MaterialButton> tools = new ArrayList<>();
 
     @Override public void onCreate(Bundle state) {
+        DynamicColors.applyToActivityIfAvailable(this);
         super.onCreate(state);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.main);
         View content = findViewById(R.id.content);
-        int pad = Math.round(8 * getResources().getDisplayMetrics().density);
-        content.setOnApplyWindowInsetsListener((view, insets) -> {
-            android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-            android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
+        passwordDraft = new androidx.lifecycle.ViewModelProvider(this).get(PasswordDraft.class);
+        boolean lightSurface = com.google.android.material.color.MaterialColors.isColorLight(
+            com.google.android.material.color.MaterialColors.getColor(content,com.google.android.material.R.attr.colorSurface));
+        WindowCompat.getInsetsController(getWindow(),content).setAppearanceLightStatusBars(lightSurface);
+        WindowCompat.getInsetsController(getWindow(),content).setAppearanceLightNavigationBars(lightSurface);
+        int pad = getResources().getDimensionPixelSize(R.dimen.content_gutter);
+        ViewCompat.setOnApplyWindowInsetsListener(content, (view, insets) -> {
+            androidx.core.graphics.Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            androidx.core.graphics.Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
             view.setPadding(pad + bars.left, pad + bars.top, pad + bars.right, pad + Math.max(bars.bottom, ime.bottom));
             return insets;
         });
-        panel = findViewById(R.id.panel);
+        ViewCompat.requestApplyInsets(content);
         preview = findViewById(R.id.preview);
+        cameraEmpty = findViewById(R.id.camera_empty);
+        emptyTitle = findViewById(R.id.camera_empty_title);
+        emptyDetail = findViewById(R.id.camera_empty_detail);
+        connectionState = findViewById(R.id.connection_state);
+        cameraState = findViewById(R.id.camera_state);
         getSystemService(android.hardware.display.DisplayManager.class).registerDisplayListener(displays, new android.os.Handler(getMainLooper()));
-        controls = new CameraControls(this, findViewById(R.id.camera_controls), this::apply, this::status,()->{CameraController active=controller;if(active!=null)active.local(Json.object("type","raw"));});
-        LinearLayout rail = findViewById(R.id.tools);
-        int[] icons = {R.drawable.ic_camera, R.drawable.ic_video, R.drawable.ic_settings, R.drawable.ic_effects};
-        String[] labels = {"Camera and focus", "Resolution and frame rate", "Sensor controls", "Phone effects"};
-        for (int i = 0; i < icons.length; i++) {
+        sheet = new BottomSheetDialog(this);
+        sheetRoot = getLayoutInflater().cloneInContext(sheet.getContext()).inflate(R.layout.settings_sheet, new FrameLayout(sheet.getContext()), false);
+        sheet.setContentView(sheetRoot);
+        ViewCompat.setOnApplyWindowInsetsListener(sheetRoot,(view,insets) -> {
+            sheetRoot.findViewById(R.id.drag_handle).setVisibility(insets.isVisible(WindowInsetsCompat.Type.ime())?View.GONE:View.VISIBLE);
+            return insets;
+        });
+        sheet.getBehavior().setFitToContents(true);
+        sheet.getBehavior().setSkipCollapsed(true);
+        sheet.setOnDismissListener(dialog -> {
+            selectedTool = -1; panel.setVisibility(View.GONE);
+            for (var button : tools) button.setChecked(false);
+            refreshStatus();
+        });
+        panel = sheetRoot.findViewById(R.id.panel);
+        sheetTitle = sheetRoot.findViewById(R.id.sheet_title);
+        cameraControlsView = sheetRoot.findViewById(R.id.camera_controls);
+        connectionControlsView = sheetRoot.findViewById(R.id.connection_controls);
+        controls = new CameraControls(sheetRoot.getContext(), (LinearLayout)cameraControlsView, this::apply, this::status, () -> {
+            CameraController active=controller; if(active!=null) active.local(Json.object("type","raw"));
+        });
+        int[] ids = {R.id.tool_camera, R.id.tool_video, R.id.tool_sensor, R.id.tool_effects};
+        for (int i = 0; i < ids.length; i++) {
             final int index = i;
-            var button = CameraControls.icon(this, icons[i], labels[i]);
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(controls.dp(48), controls.dp(48)); params.bottomMargin = controls.dp(8);
-            button.setCheckable(true); rail.addView(button, params); tools.add(button); button.setOnClickListener(v -> select(selectedTool == index ? -1 : index));
+            com.google.android.material.button.MaterialButton button = findViewById(ids[i]);
+            button.setCheckable(true); tools.add(button);
+            button.setOnClickListener(v -> select(selectedTool == index ? -1 : index));
         }
-        content.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob) -> { sizePanel(); transform(); });
+        content.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob) -> transform());
         preview.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             public void onSurfaceTextureAvailable(android.graphics.SurfaceTexture texture, int w, int h) { if (controller != null) controller.preview(texture); }
             public void onSurfaceTextureSizeChanged(android.graphics.SurfaceTexture texture, int w, int h) { transform(); }
@@ -77,22 +124,31 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
             public void handleOnBackPressed() { if (selectedTool >= 0) select(-1); else { setEnabled(false); getOnBackPressedDispatcher().onBackPressed(); } }
         });
-        if (state != null && state.containsKey("camera-settings")) try { settings = new JSONObject(state.getString("camera-settings")); } catch (Exception ignored) { }
+        if (state != null) {
+            if (state.containsKey("camera-settings")) try { settings = new JSONObject(state.getString("camera-settings")); } catch (Exception ignored) { }
+            restoredTool = state.getInt("selected-tool", -1); restoredScroll = state.getInt("panel-scroll", 0);
+            controls.restoreEditor(state);
+        }
         status = findViewById(R.id.status);
-        connectionDetail = findViewById(R.id.connection_detail);
-        format = findViewById(R.id.format);
+        connectionDetail = sheetRoot.findViewById(R.id.connection_detail);
+        format = findViewById(R.id.tool_video);
+        videoSummary = findViewById(R.id.video_summary);
         cameraAccess = findViewById(R.id.camera_access);
-        savePassword = findViewById(R.id.save_password);
-        available = findViewById(R.id.available);
-        protect = findViewById(R.id.protect);
-        password = findViewById(R.id.password);
-        passwordField = findViewById(R.id.password_field);
-        copy = findViewById(R.id.copy);
+        savePassword = sheetRoot.findViewById(R.id.save_password);
+        available = sheetRoot.findViewById(R.id.available);
+        protect = sheetRoot.findViewById(R.id.protect);
+        password = sheetRoot.findViewById(R.id.password);
+        passwordField = sheetRoot.findViewById(R.id.password_field);
+        copy = sheetRoot.findViewById(R.id.copy);
+        passwordHelp = sheetRoot.findViewById(R.id.password_help);
+        discardPassword = sheetRoot.findViewById(R.id.discard_password);
+        sheetRoot.findViewById(R.id.close_settings).setOnClickListener(v -> select(-1));
         available.setChecked(getPreferences(MODE_PRIVATE).getBoolean("available",true));
         protect.setChecked(getPreferences(MODE_PRIVATE).getBoolean("protect",false));
         passwordField.setVisibility(protect.isChecked() ? View.VISIBLE : View.GONE);
         savePassword.setVisibility(protect.isChecked() ? View.VISIBLE : View.GONE);
-        if (getPreferences(MODE_PRIVATE).contains("password-key")) passwordField.setPlaceholderText("Saved password");
+        passwordHelp.setVisibility(protect.isChecked() ? View.VISIBLE : View.GONE);
+        if (getPreferences(MODE_PRIVATE).contains("password-key")) passwordField.setPlaceholderText(getString(R.string.saved_password));
         available.setOnCheckedChangeListener((button,checked) -> {
             disable(); getPreferences(MODE_PRIVATE).edit().putBoolean("available",checked).apply();
             if (checked) resumeCamera();
@@ -102,32 +158,50 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             disable(); getPreferences(MODE_PRIVATE).edit().putBoolean("protect",checked).apply();
             passwordField.setVisibility(checked ? View.VISIBLE : View.GONE);
             savePassword.setVisibility(checked ? View.VISIBLE : View.GONE);
+            passwordHelp.setVisibility(checked ? View.VISIBLE : View.GONE);
             if (!checked) password.setText("");
-            enable(); refreshStatus(); sizePanel();
+            enable(); refreshStatus();
         });
         password.addTextChangedListener(new android.text.TextWatcher() {
             public void beforeTextChanged(CharSequence s,int start,int count,int after) { }
-            public void onTextChanged(CharSequence s,int start,int before,int count) { if (bridge != null) disable(); passwordField.setError(null); refreshStatus(); }
+            public void onTextChanged(CharSequence s,int start,int before,int count) {
+                passwordDraft.value = s.toString();
+                if (bridge != null) disable(); passwordField.setError(null);
+                discardPassword.setVisibility(s.length() > 0 && getPreferences(MODE_PRIVATE).contains("password-key") ? View.VISIBLE : View.GONE);
+                refreshStatus();
+            }
             public void afterTextChanged(android.text.Editable s) { }
         });
         status.setOnClickListener(v -> select(selectedTool == 4 ? -1 : 4));
         format.setOnClickListener(v -> select(selectedTool == 1 ? -1 : 1));
         cameraAccess.setOnClickListener(v -> requestCamera());
+        discardPassword.setOnClickListener(v -> { password.setText(""); enable(); refreshStatus(); });
+        password.setOnEditorActionListener((v, action, event) -> {
+            if (action == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) { savePassword.performClick(); return true; }
+            return false;
+        });
         savePassword.setOnClickListener(v -> {
             try {
                 byte[] salt = Auth.random(16), key = Auth.derive(password.getText().toString(),salt);
                 disable();
                 getPreferences(MODE_PRIVATE).edit().putString("password-salt",Bridge.hex(salt)).putString("password-key",Bridge.hex(key)).apply();
-                password.setText(""); passwordField.setPlaceholderText("Saved password");
+                password.setText(""); passwordField.setPlaceholderText(getString(R.string.saved_password));
                 ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(password.getWindowToken(),0);
                 enable();
-            } catch (Exception e) { passwordField.setError(e.getMessage()); sizePanel(); }
+            } catch (Exception e) {
+                passwordField.setError(getString(e instanceof IllegalArgumentException?R.string.password_length_error:R.string.password_save_failed));
+                passwordField.post(() -> {
+                    password.requestFocus();
+                    passwordField.requestRectangleOnScreen(new android.graphics.Rect(0,0,passwordField.getWidth(),passwordField.getHeight()),false);
+                });
+            }
         });
         copy.setOnClickListener(v -> {
             ClipboardManager clipboard = getSystemService(ClipboardManager.class);
             clipboard.setPrimaryClip(ClipData.newPlainText("OpenCam pairing", pairing));
-            com.google.android.material.snackbar.Snackbar.make(content,"Pairing link copied",com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show();
+            com.google.android.material.snackbar.Snackbar.make(content,getString(R.string.pairing_link_copied),com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show();
         });
+        if (!passwordDraft.value.isEmpty()) password.setText(passwordDraft.value);
     }
 
     String address() throws SocketException {
@@ -155,7 +229,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             String endpoint = address() + ":" + Bridge.PORT;
             pairing = "opencam://" + endpoint + "?token=" + bridge.token + "&pin=" + bridge.fingerprint;
             connectionDetail.setText(endpoint); refreshStatus();
-        } catch (Exception e) { disable(); status("Connection failed: " + e.getMessage()); }
+        } catch (Exception e) { disable(); status(getString(R.string.connection_failed,e.getMessage())); }
     }
 
     void disable() {
@@ -169,17 +243,30 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         if (status == null) return;
         boolean cameraAllowed = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
         boolean paired = bridge != null && bridge.peer != null && bridge.peer.alive;
-        String label = !cameraAllowed || controller == null ? "No camera" : !available.isChecked() ? "Offline" :
-            bridge == null ? (protect.isChecked() ? "Set password" : "Offline") : paired ? (streaming ? "Live" : "Connected") : "No desktop";
-        status.setText(label); status.setContentDescription(label + ", connection settings");
+        int label = !cameraAllowed ? R.string.camera_access_needed : !previewReady ? (cameraFailure==null?R.string.starting_preview:R.string.camera_unavailable) : !available.isChecked() ? R.string.preview_only :
+            bridge == null ? (protect.isChecked() ? R.string.password_not_saved : R.string.preview_only) :
+            paired ? (streaming ? R.string.streaming_to_desktop : R.string.desktop_connected) : R.string.ready_to_connect;
+        connectionState.setText(label);
+        status.setContentDescription(getString(R.string.connection_description, getString(label)));
+        int detail = bridge == null && protect.isChecked() && available.isChecked() ? R.string.discovery_paused :
+            paired && streaming ? R.string.controls_synced : R.string.local_preview;
+        cameraState.setText(detail);
         copy.setEnabled(bridge != null);
-        cameraAccess.setVisibility(controller == null ? View.VISIBLE : View.GONE);
-        cameraAccess.setText(cameraAllowed ? "Retry camera" : "Allow camera");
-        format.setVisibility(controller != null && settings != null && selectedTool < 0 ? View.VISIBLE : View.GONE);
+        cameraEmpty.setVisibility(previewReady ? View.GONE : View.VISIBLE);
+        emptyTitle.setText(!cameraAllowed ? R.string.permission_title : cameraFailure!=null ? R.string.camera_unavailable : R.string.starting_preview);
+        emptyDetail.setText(!cameraAllowed ? R.string.permission_detail : R.string.camera_retry_detail);
+        emptyDetail.setVisibility(!cameraAllowed || cameraFailure!=null ? View.VISIBLE : View.GONE);
+        if (cameraAllowed && cameraFailure != null) emptyDetail.setText(cameraFailure + " " + getString(R.string.camera_retry_detail));
+        cameraAccess.setText(cameraAllowed ? R.string.retry_camera : R.string.allow_camera);
+        cameraAccess.setVisibility(!cameraAllowed || cameraFailure!=null ? View.VISIBLE : View.GONE);
+        videoSummary.setVisibility(controller != null && settings != null ? View.VISIBLE : View.GONE);
     }
 
     void requestCamera() {
-        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) resumeCamera();
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            if (controller != null && controller.session == null) { disable(); controller.close(); controller = null; }
+            cameraFailure = null; resumeCamera();
+        }
         else if (getPreferences(MODE_PRIVATE).getBoolean("asked-camera", false) && !shouldShowRequestPermissionRationale(Manifest.permission.CAMERA))
             startActivity(new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:" + getPackageName())));
         else { getPreferences(MODE_PRIVATE).edit().putBoolean("asked-camera",true).apply(); requestPermissions(new String[]{Manifest.permission.CAMERA},1); }
@@ -196,7 +283,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
     @Override public void status(String value) { runOnUiThread(() -> {
         if (!resumed || connectionDetail == null) return;
         connectionDetail.setText(value); refreshStatus();
-        if (selectedTool != 4) com.google.android.material.snackbar.Snackbar.make(findViewById(R.id.content),value,com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show();
+        if (selectedTool != 4) com.google.android.material.snackbar.Snackbar.make(sheet.isShowing()?sheetRoot:findViewById(R.id.content),value,com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show();
     }); }
     @Override public void onResume() {
         super.onResume(); resumed = true;
@@ -206,14 +293,20 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
         }
         refreshStatus();
+        if (restoredTool >= 0) {
+            int tool = restoredTool; restoredTool = -1; select(tool);
+            panel.post(() -> panel.scrollTo(0, restoredScroll));
+        }
     }
     @Override public void onPause() {
-        resumed = false;
+        resumed = false; previewReady = false;
         if (controller != null) { controller.close(); controller = null; }
         disable(); super.onPause();
     }
     @Override public void onSaveInstanceState(Bundle out) {
-        if (settings != null) out.putString("camera-settings", settings.toString()); super.onSaveInstanceState(out);
+        if (settings != null) out.putString("camera-settings", settings.toString());
+        out.putInt("selected-tool", selectedTool); out.putInt("panel-scroll", panel.getScrollY());
+        controls.saveEditor(out); super.onSaveInstanceState(out);
     }
 
     void resumeCamera() {
@@ -225,10 +318,11 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         if (!resumed || controller != null) return;
         try {
             Catalog capabilities = new Catalog(getSystemService(CameraManager.class)); catalog = capabilities.export();
+            previewReady = false;
             controller = new CameraController(this, capabilities, this::cameraEvent);
             if (settings != null && capabilities.lenses.containsKey(settings.optString("camera"))) controller.current = CaptureSettings.copy(settings);
             if (preview.isAvailable()) controller.preview(preview.getSurfaceTexture());
-        } catch (Exception e) { status("Camera could not start: " + e.getMessage()); }
+        } catch (Exception e) { cameraFailure = getString(R.string.camera_start_failed,e.getMessage()); status(cameraFailure); }
     }
     void cameraEvent(JSONObject event) {
         runOnUiThread(() -> {
@@ -241,16 +335,19 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
                 }
                 switch (event.optString("type")) {
                     case "preview", "configured", "controls", "state" -> {
+                        if (controller != null && controller.session != null) { previewReady = true; cameraFailure = null; }
                         streaming = event.optBoolean("streaming");
-                        format.setText(settings.optInt("width") + " × " + settings.optInt("height") + " · " + settings.optInt("fps") + " fps");
-                        format.setContentDescription(format.getText() + ", resolution and frame rate");
+                        videoSummary.setText(getString(R.string.format_summary,settings.optInt("width"),settings.optInt("height"),settings.optInt("fps")));
+                        format.setContentDescription(getString(R.string.format_description,videoSummary.getText()));
                         refreshStatus();
-                        if (event.optBoolean("conflict")) status("Settings changed on the other device · try again");
+                        if (event.optBoolean("conflict")) status(getString(R.string.settings_conflict));
                     }
-                    case "error" -> { status(event.optString("message")); if (settings != null) controls.state(catalog, settings, selectedTool); }
+                    case "error" -> {
+                        if (controller != null && controller.session == null) { previewReady = false; cameraFailure = event.optString("message"); }
+                        status(event.optString("message")); if (settings != null) controls.state(catalog, settings, selectedTool);
+                    }
                     case "raw_saved", "raw_transfer_error" -> status(event.optString("message"));
                 }
-                sizePanel();
             } catch (Exception e) { status(e.getMessage()); }
         });
     }
@@ -268,22 +365,29 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         } catch (Exception e) { status(e.getMessage()); }
     }
     void select(int tool) {
+        if (tool < 0) { sheet.dismiss(); selectedTool = -1; panel.setVisibility(View.GONE); refreshStatus(); return; }
         selectedTool = tool;
         for (int i = 0; i < tools.size(); i++) tools.get(i).setChecked(i == tool);
-        panel.setVisibility(tool < 0 ? View.GONE : View.VISIBLE);
-        findViewById(R.id.connection_controls).setVisibility(tool == 4 ? View.VISIBLE : View.GONE);
-        findViewById(R.id.camera_controls).setVisibility(tool < 4 ? View.VISIBLE : View.GONE);
-        if (settings != null) controls.state(catalog, settings, tool);
-        if (tool < 4 && tool >= 0 && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
-            requestCamera();
-        refreshStatus(); panel.scrollTo(0, 0); sizePanel();
-    }
-    void sizePanel() {
-        if (panel == null || findViewById(R.id.content).getHeight() == 0) return;
-        View child = panel.getChildAt(0);
-        child.measure(View.MeasureSpec.makeMeasureSpec(Math.max(0, panel.getWidth()), View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        int height = Math.min(child.getMeasuredHeight(), (findViewById(R.id.content).getHeight() - findViewById(R.id.content).getPaddingTop() - findViewById(R.id.content).getPaddingBottom()) / 2);
-        if (panel.getLayoutParams().height != height) { panel.getLayoutParams().height = height; panel.requestLayout(); }
+        int[] titles = {R.string.camera,R.string.video,R.string.exposure,R.string.effects,R.string.connection};
+        sheetTitle.setText(titles[tool]);
+        panel.setVisibility(View.VISIBLE);
+        connectionControlsView.setVisibility(tool == 4 ? View.VISIBLE : View.GONE);
+        cameraControlsView.setVisibility(tool < 4 ? View.VISIBLE : View.GONE);
+        if (settings != null) controls.state(catalog,settings,tool);
+        else if (tool < 4) controls.unavailable();
+        if (tool < 4 && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) requestCamera();
+        refreshStatus(); panel.scrollTo(0,0);
+        if (!sheet.isShowing()) {
+            sheet.show();
+            if (sheet.getWindow() != null) {
+                sheet.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+                boolean lightSurface=com.google.android.material.color.MaterialColors.isColorLight(
+                    com.google.android.material.color.MaterialColors.getColor(sheetRoot,com.google.android.material.R.attr.colorSurface));
+                WindowCompat.getInsetsController(sheet.getWindow(),sheetRoot).setAppearanceLightStatusBars(lightSurface);
+                WindowCompat.getInsetsController(sheet.getWindow(),sheetRoot).setAppearanceLightNavigationBars(lightSurface);
+            }
+        }
+        sheet.getBehavior().setState(BottomSheetBehavior.STATE_EXPANDED);
     }
     void transform() {
         if (previewInfo == null || previewInfo.optInt("width") <= 0 || previewInfo.optInt("height") <= 0 || preview.getDisplay() == null || preview.getWidth() == 0 || preview.getHeight() == 0) return;
@@ -299,5 +403,8 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         matrix.postRotate(-display, vw / 2, vh / 2);
         return matrix;
     }
-    @Override public void onDestroy() { getSystemService(android.hardware.display.DisplayManager.class).unregisterDisplayListener(displays); disable(); super.onDestroy(); }
+    @Override public void onDestroy() {
+        getSystemService(android.hardware.display.DisplayManager.class).unregisterDisplayListener(displays);
+        sheet.setOnDismissListener(null); sheet.dismiss(); disable(); super.onDestroy();
+    }
 }

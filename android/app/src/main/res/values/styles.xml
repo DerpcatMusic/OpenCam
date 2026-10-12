@@ -1,0 +1,31 @@
+<resources>
+    <style name="Widget.OpenCam.Action" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:minHeight">@dimen/touch_target_min</item>
+        <item name="android:textAppearance">?attr/textAppearanceLabelLarge</item>
+        <item name="android:singleLine">false</item>
+        <item name="iconSize">@dimen/icon_action</item>
+    </style>
+    <style name="Widget.OpenCam.Tool" parent="Widget.OpenCam.Action">
+        <item name="backgroundTint">@color/tool_background</item>
+        <item name="android:textColor">@color/tool_foreground</item>
+        <item name="iconTint">@color/tool_foreground</item>
+        <item name="iconGravity">textStart</item>
+    </style>
+    <style name="Widget.OpenCam.Icon" parent="Widget.Material3.Button.IconButton">
+        <item name="android:minWidth">@dimen/touch_target_min</item>
+        <item name="android:minHeight">@dimen/touch_target_min</item>
+        <item name="iconSize">@dimen/icon_action</item>
+        <item name="android:contentDescription">@null</item>
+    </style>
+    <style name="Widget.OpenCam.Tool.Wide" parent="Widget.OpenCam.Tool">
+        <item name="iconGravity">textStart</item>
+    </style>
+    <style name="Widget.OpenCam.Field" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+    </style>
+    <style name="TextAppearance.OpenCam.Section" parent="TextAppearance.Material3.TitleMedium" />
+    <style name="TextAppearance.OpenCam.Supporting" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textColor">?attr/colorOnSurfaceVariant</item>
+    </style>
+</resources>

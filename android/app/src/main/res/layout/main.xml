@@ -1,55 +1,21 @@
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
- xmlns:app="http://schemas.android.com/apk/res-auto" android:id="@+id/content"
- android:layout_width="match_parent" android:layout_height="match_parent" android:background="?attr/colorSurface">
- <TextureView android:id="@+id/preview" android:layout_width="match_parent" android:layout_height="match_parent"
-  android:layout_marginEnd="64dp" android:contentDescription="Camera preview" />
- <com.google.android.material.button.MaterialButton android:id="@+id/status"
-  style="@style/Widget.Material3.Button.TonalButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
-  android:layout_marginEnd="72dp" android:minHeight="48dp" android:text="No camera"
-  android:textAppearance="?attr/textAppearanceLabelMedium" android:textColor="?attr/colorOnSurface"
-  app:backgroundTint="?attr/colorSurfaceVariant" app:icon="@drawable/ic_wifi" app:iconTint="?attr/colorOnSurface" app:iconSize="18dp" />
- <com.google.android.material.button.MaterialButton android:id="@+id/camera_access"
-  style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
-  android:layout_gravity="center" android:layout_marginEnd="64dp" android:minHeight="48dp"
-  android:text="Allow camera" app:icon="@drawable/ic_camera" />
- <com.google.android.material.button.MaterialButton android:id="@+id/format"
-  style="@style/Widget.Material3.Button.TonalButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
-  android:layout_gravity="bottom" android:layout_marginEnd="72dp" android:minHeight="48dp" android:visibility="gone"
-  android:textAppearance="?attr/textAppearanceLabelMedium" android:textColor="?attr/colorOnSurface"
-  app:backgroundTint="?attr/colorSurfaceVariant" />
- <ScrollView android:layout_width="56dp" android:layout_height="match_parent" android:layout_gravity="end"
-  android:fillViewport="true" android:paddingVertical="8dp" android:background="?attr/colorSurface">
-  <LinearLayout android:id="@+id/tools" android:layout_width="match_parent" android:layout_height="wrap_content"
-   android:orientation="vertical" android:gravity="center" />
- </ScrollView>
- <ScrollView android:id="@+id/panel" android:layout_width="match_parent" android:layout_height="wrap_content"
-  android:layout_gravity="bottom" android:layout_marginEnd="64dp" android:visibility="gone" android:background="?attr/colorSurfaceVariant">
-  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
-   <LinearLayout android:id="@+id/camera_controls" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
-   <LinearLayout android:id="@+id/connection_controls" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
-    <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/available"
-     android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="Available to desktops" />
-    <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/protect"
-     android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="Password" />
-    <com.google.android.material.textfield.TextInputLayout android:id="@+id/password_field"
-     style="@style/Widget.Material3.TextInputLayout.OutlinedBox" android:layout_width="match_parent" android:layout_height="wrap_content"
-     android:layout_marginTop="8dp" android:hint="Password" app:helperText="8–128 characters" app:endIconMode="password_toggle">
-     <com.google.android.material.textfield.TextInputEditText android:id="@+id/password"
-      android:layout_width="match_parent" android:layout_height="wrap_content" android:singleLine="true" android:inputType="textPassword" />
-    </com.google.android.material.textfield.TextInputLayout>
-    <com.google.android.material.button.MaterialButton android:id="@+id/save_password"
-     style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content"
-     android:layout_gravity="end" android:minHeight="48dp" android:text="Save password" />
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-     <TextView android:id="@+id/connection_detail" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-      android:textAppearance="?attr/textAppearanceBodySmall" android:textColor="?attr/colorOnSurfaceVariant" />
-     <com.google.android.material.button.MaterialButton android:id="@+id/copy"
-      style="@style/Widget.Material3.Button.TextButton" android:layout_width="48dp" android:layout_height="48dp" android:minWidth="0dp"
-      android:contentDescription="Copy pairing link" android:tooltipText="Copy pairing link" android:enabled="false"
-      app:icon="@drawable/ic_clipboard" app:iconGravity="textStart" app:iconPadding="0dp" app:iconSize="22dp"
-      android:padding="12dp" android:insetTop="0dp" android:insetBottom="0dp" />
-    </LinearLayout>
-   </LinearLayout>
-  </LinearLayout>
- </ScrollView>
-</FrameLayout>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+ android:id="@+id/content" android:layout_width="match_parent" android:layout_height="match_parent" android:background="?attr/colorSurface">
+ <include android:id="@+id/summary" layout="@layout/camera_summary" android:layout_width="0dp" android:layout_height="wrap_content"
+  app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toTopOf="parent" />
+ <androidx.constraintlayout.widget.ConstraintLayout android:id="@+id/camera_body" android:layout_width="0dp" android:layout_height="0dp"
+  app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent"
+  app:layout_constraintTop_toBottomOf="@id/summary" app:layout_constraintBottom_toBottomOf="parent">
+ <include android:id="@+id/preview_stage" layout="@layout/preview_stage" android:layout_width="0dp" android:layout_height="0dp"
+  android:layout_marginTop="@dimen/content_gutter" android:layout_marginBottom="@dimen/content_gutter"
+  app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintBottom_toTopOf="@id/tool_scroll" />
+ <!-- Bound overflow to a share of the available body; ordinary tool height remains content-measured. -->
+ <androidx.constraintlayout.widget.Guideline android:id="@+id/tool_overflow_limit" android:layout_width="wrap_content" android:layout_height="wrap_content"
+  android:orientation="horizontal" app:layout_constraintGuide_percent="0.5" />
+ <androidx.core.widget.NestedScrollView android:id="@+id/tool_scroll" android:layout_width="0dp" android:layout_height="wrap_content"
+  android:fillViewport="false" app:layout_constrainedHeight="true" app:layout_constraintVertical_bias="1"
+  app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent"
+  app:layout_constraintTop_toTopOf="@id/tool_overflow_limit" app:layout_constraintBottom_toBottomOf="parent">
+  <include layout="@layout/camera_toolbar" />
+ </androidx.core.widget.NestedScrollView>
+ </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

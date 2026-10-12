@@ -1,0 +1,87 @@
+{
+  "origin": "native-device-capture",
+  "device": "Android API36 google_apis x86_64 emulator (OpenCam_API36)",
+  "capture": "adb -s emulator-5580 exec-out screencap -p",
+  "syntheticCamera": true,
+  "pixelEdits": false,
+  "embeddedOriginMetadata": true,
+  "sha256": "b5714d971dac81ade4dbcf85f876915fc1e6f7edefb9b3fc1801c2a9812fadb6",
+  "configuration": {
+    "name": "phone-permission",
+    "state": "permission denied recovery",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          42,
+          181,
+          501,
+          239
+        ],
+        "text": "Camera access needed",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          631,
+          178,
+          1038,
+          304
+        ],
+        "text": "Connection",
+        "description": "Camera access needed. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          42,
+          346,
+          1038,
+          1980
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          205,
+          2022,
+          547,
+          2148
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          568,
+          2022,
+          876,
+          2148
+        ],
+        "text": "Video",
+        "description": ""
+      },
+      "tool_sensor": {
+        "bounds": [
+          181,
+          2169,
+          550,
+          2295
+        ],
+        "text": "Exposure",
+        "description": ""
+      },
+      "tool_effects": {
+        "bounds": [
+          571,
+          2169,
+          900,
+          2295
+        ],
+        "text": "Effects",
+        "description": ""
+      }
+    },
+    "font_scale": "1",
+    "density": "Physical density: 420"
+  }
+}

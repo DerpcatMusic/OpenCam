@@ -1,0 +1,48 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+ android:id="@+id/settings_sheet" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+ <com.google.android.material.bottomsheet.BottomSheetDragHandleView android:id="@+id/drag_handle" android:layout_width="match_parent" android:layout_height="wrap_content" />
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical"
+  android:paddingStart="@dimen/space_section" android:paddingEnd="@dimen/content_gutter">
+  <TextView android:id="@+id/sheet_title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+   android:textAppearance="?attr/textAppearanceTitleLarge" android:textColor="?attr/colorOnSurface" android:accessibilityHeading="true" />
+  <com.google.android.material.button.MaterialButton android:id="@+id/close_settings" style="@style/Widget.OpenCam.Icon"
+   android:layout_width="wrap_content" android:layout_height="wrap_content" android:contentDescription="@string/close_settings" android:tooltipText="@string/close_settings"
+   app:icon="@drawable/ic_close" />
+ </LinearLayout>
+ <androidx.core.widget.NestedScrollView android:id="@+id/panel" android:layout_width="match_parent" android:layout_height="wrap_content"
+  android:fillViewport="false" android:clipToPadding="false" android:paddingStart="@dimen/space_section" android:paddingEnd="@dimen/space_section"
+  android:paddingTop="@dimen/space_control" android:paddingBottom="@dimen/space_section">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+   <LinearLayout android:id="@+id/camera_controls" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+   <LinearLayout android:id="@+id/connection_controls" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+    <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/available" android:layout_width="match_parent" android:layout_height="wrap_content"
+     android:minHeight="@dimen/touch_target_min" android:text="@string/available_to_desktops" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/availability_help"
+     android:layout_marginTop="@dimen/space_compact" android:textAppearance="@style/TextAppearance.OpenCam.Supporting" />
+    <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/protect" android:layout_width="match_parent" android:layout_height="wrap_content"
+     android:layout_marginTop="@dimen/space_section" android:minHeight="@dimen/touch_target_min" android:text="@string/require_password" />
+    <TextView android:id="@+id/password_help" android:layout_width="match_parent" android:layout_height="wrap_content"
+     android:layout_marginTop="@dimen/space_compact" android:text="@string/password_help" android:textAppearance="@style/TextAppearance.OpenCam.Supporting" android:visibility="gone" />
+    <com.google.android.material.textfield.TextInputLayout android:id="@+id/password_field" style="@style/Widget.OpenCam.Field"
+     android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_control"
+     android:hint="@string/password" app:helperText="@string/password_length" app:endIconMode="password_toggle">
+     <com.google.android.material.textfield.TextInputEditText android:id="@+id/password" android:layout_width="match_parent" android:layout_height="wrap_content"
+      android:inputType="textPassword" android:singleLine="true" android:imeOptions="actionDone" android:importantForAutofill="no" />
+    </com.google.android.material.textfield.TextInputLayout>
+    <com.google.android.material.button.MaterialButton android:id="@+id/save_password" android:layout_width="match_parent" android:layout_height="wrap_content"
+     android:layout_marginTop="@dimen/space_control" android:minHeight="@dimen/touch_target_min" android:text="@string/save_password" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/discard_password" style="@style/Widget.Material3.Button.TextButton"
+     android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="@dimen/touch_target_min" android:text="@string/discard_password" android:visibility="gone" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_section"
+     android:text="@string/pairing" android:textAppearance="@style/TextAppearance.OpenCam.Section" android:accessibilityHeading="true" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_compact"
+     android:text="@string/pairing_help" android:textAppearance="@style/TextAppearance.OpenCam.Supporting" />
+    <TextView android:id="@+id/connection_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_control"
+     android:textAppearance="@style/TextAppearance.OpenCam.Supporting" android:textIsSelectable="true" android:accessibilityLiveRegion="polite" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/copy" style="@style/Widget.OpenCam.Action"
+     android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_control"
+     android:text="@string/copy_pairing_link" android:enabled="false" app:icon="@drawable/ic_clipboard" />
+   </LinearLayout>
+  </LinearLayout>
+ </androidx.core.widget.NestedScrollView>
+</LinearLayout>

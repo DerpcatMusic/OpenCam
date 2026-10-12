@@ -1,0 +1,27 @@
+<resources>
+    <color name="primary">#625B9B</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="primary_container">#E7DEFF</color>
+    <color name="on_primary_container">#1E164B</color>
+    <color name="secondary">#625D71</color>
+    <color name="on_secondary">#FFFFFF</color>
+    <color name="secondary_container">#E8DEF8</color>
+    <color name="on_secondary_container">#1F192C</color>
+    <color name="surface">#FDF8FF</color>
+    <color name="on_surface">#1C1B20</color>
+    <color name="surface_container_low">#F7F2FA</color>
+    <color name="surface_container">#F1ECF4</color>
+    <color name="surface_container_high">#EBE6EE</color>
+    <color name="surface_container_highest">#E6E0E9</color>
+    <color name="on_surface_variant">#48454E</color>
+    <color name="outline">#79757F</color>
+    <color name="outline_variant">#CAC4CF</color>
+    <color name="error">#BA1A1A</color>
+    <color name="on_error">#FFFFFF</color>
+    <color name="error_container">#FFDAD6</color>
+    <color name="on_error_container">#410002</color>
+    <color name="inverse_surface">#313035</color>
+    <color name="inverse_on_surface">#F4EFF7</color>
+    <color name="inverse_primary">#CBC0FF</color>
+    <color name="camera_preview_background">#000000</color>
+</resources>

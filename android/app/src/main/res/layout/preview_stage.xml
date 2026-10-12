@@ -1,0 +1,16 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/preview_stage"
+ android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/camera_preview_background">
+ <TextureView android:id="@+id/preview" android:layout_width="match_parent" android:layout_height="match_parent" android:contentDescription="@string/camera_preview" />
+ <androidx.core.widget.NestedScrollView android:id="@+id/camera_empty" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true" android:background="?attr/colorSurface">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center"
+   android:padding="@dimen/space_section">
+   <TextView android:id="@+id/camera_empty_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center"
+    android:text="@string/permission_title" android:textAppearance="?attr/textAppearanceTitleLarge" android:textColor="?attr/colorOnSurface" />
+   <TextView android:id="@+id/camera_empty_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center"
+    android:layout_marginTop="@dimen/space_compact" android:text="@string/permission_detail" android:textAppearance="@style/TextAppearance.OpenCam.Supporting" />
+   <com.google.android.material.button.MaterialButton android:id="@+id/camera_access" android:layout_width="wrap_content" android:layout_height="wrap_content"
+    android:layout_marginTop="@dimen/space_section" android:minHeight="@dimen/touch_target_min" android:text="@string/allow_camera" app:icon="@drawable/ic_camera"
+    xmlns:app="http://schemas.android.com/apk/res-auto" />
+  </LinearLayout>
+ </androidx.core.widget.NestedScrollView>
+</FrameLayout>
