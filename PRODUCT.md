@@ -17,6 +17,7 @@ Send camera video over USB and encrypted Wi-Fi, provide a local Android preview,
 
 ## Operating Context
 All three desktop platforms were explicitly requested. Low latency and throughput are the priority. The exact phone model remains unconfirmed.
+The user confirmed mounted and handheld phone use are equally important. Support both portrait and landscape: readiness must remain legible when mounted, and labeled adjustments must stay reachable when handheld.
 
 ## Capabilities and Constraints
 Camera2 enumeration includes front, rear, logical and physical lenses, editable sensor resolution and FPS, manual exposure/focus/white balance/stabilization and ISP modes where supported, RAW stills and full capability export. Phone-side native EGL/GLES stretch, fit/crop, radial/local distortion, rotate/mirror and optional bounded person segmentation/background blur. Prefer direct sensor/ISP controls; bypass GPU and ML when effects are off.
@@ -39,3 +40,7 @@ The product is OpenCam, with MIT-licensed source published on GitHub. Custom Win
 The architecture extension separates socket reading from decoding/color conversion, reuses conversion buffers, bounds pending video, and rejects late frames from canceled captures. Controls retain priority between 64 KiB video/file chunks. Transient connections retry automatically with 100 ms to 2 s delay, reauthenticate and restore capture. Desktop and phone heartbeat watchdogs expire silent connections. Sensor sizes and frame-duration limits follow the selected transport format; uncompressed formats avoid MediaCodec but require CPU packing and high network bandwidth.
 
 RAW-capable lenses expose a RAW size selector and DNG capture action on phone and desktop. DngCreator still capture preserves sensor metadata; a checksum-verified file download is separate from uncompressed processed-pixel video. Capture resumes after success or failure; completed phone DNGs survive transfer failure. Continuous Bayer RAW video, hardware desktop decoding, zero-copy transport, physical RAW fidelity and competitor latency remain unverified/unimplemented. `docs/transport.md` records the wire contract; `docs/architecture-smoke.json` contains explicitly synthetic verification, including a 5.18 MB DngCreator capture/download from the emulator’s actual RAW_SENSOR surface and restored preview.
+
+## Android UI commitments
+
+The Android camera surface uses intrinsic native Material 3 Views: a flexible contained preview, labeled tools, content-measured compact/wide layouts and standard settings sheets. No compensating rail offsets or activity-calculated panel heights. Shared resources define spacing, minimum touch targets, text roles and color roles; system light/dark appearance and Android 12+ dynamic color are supported with a lavender fallback. Phone UI follows native Material conventions while the desktop retains its pinned Zeron world. Uncommitted password drafts live only in a ViewModel; camera edit, sheet and scroll state survive activity recreation.

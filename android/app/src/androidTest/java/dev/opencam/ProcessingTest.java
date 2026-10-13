@@ -16,7 +16,7 @@ public final class ProcessingTest extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle();
         try {
-            checkShaders(); checkModel(); checkValidation(); checkSettings(); checkPixelPacking(); checkPreviewTransform(); checkCameraSync();
+            checkShaders(); checkModel(); checkValidation(); checkSettings(); checkPixelPacking(); checkPreviewTransform(); checkCameraSync(); checkUiRestore();
             result.putString("stream","GLES3 encoder/preview parity, blur, segmentation, native lens switching, phone/desktop sync, revisions and validation passed");
             result.putString("checks",checks.toString());
             finish(Activity.RESULT_OK,result);
@@ -155,9 +155,44 @@ public final class ProcessingTest extends Instrumentation {
                 require(activity.bridge != null && activity.copy.isEnabled(), "Foreground preview must be available to desktops automatically");
                 Bridge opened = activity.bridge; activity.enable();
                 require(activity.bridge == opened, "Repeated resume replaced the active listener");
-                require(activity.status.getText().toString().equals("No desktop"), "Unpaired camera status is misleading");
+                require(activity.connectionState.getText().toString().equals(activity.getString(R.string.ready_to_connect)), "Unpaired camera status is misleading");
+                activity.disable();
+                try (java.net.ServerSocket occupied = new java.net.ServerSocket(Bridge.PORT)) {
+                    activity.enable();
+                    require(activity.bridge == null && activity.connectionFailure != null && activity.retryConnection.getVisibility() == android.view.View.VISIBLE,
+                        "A busy listener must show a persistent connection error and retry action");
+                } catch (java.io.IOException e) { throw new AssertionError("Could not reserve the test listener",e); }
+                activity.retryConnection.performClick();
+                require(activity.bridge != null && activity.connectionFailure == null && activity.retryConnection.getVisibility() == android.view.View.GONE,
+                    "Connection retry did not restore discovery");
+                android.graphics.Rect previewBounds=new android.graphics.Rect();
+                require(activity.preview.getGlobalVisibleRect(previewBounds), "Camera preview has no visible space");
+                int target=activity.getResources().getDimensionPixelSize(R.dimen.touch_target_min);
+                int lastToolBottom=0;
+                for (var tool : activity.tools) {
+                    android.graphics.Rect bounds=new android.graphics.Rect();
+                    require(tool.getWidth()>=target && tool.getHeight()>=target, "Camera tool lost its minimum touch target");
+                    require(tool.getText().length()>0, "Camera tools need visible labels");
+                    require(tool.getGlobalVisibleRect(bounds) && !android.graphics.Rect.intersects(bounds,previewBounds), "Camera tool obscures the preview");
+                    lastToolBottom=Math.max(lastToolBottom,bounds.bottom);
+                }
+                if (activity.getResources().getConfiguration().screenWidthDp<600) {
+                    android.view.View content=activity.findViewById(R.id.content);
+                    android.graphics.Rect contentBounds=new android.graphics.Rect(); content.getGlobalVisibleRect(contentBounds);
+                    require(contentBounds.bottom-content.getPaddingBottom()-lastToolBottom<=target,
+                        "Compact camera controls float above the bottom reach area");
+                }
                 activity.status.performClick();
-                require(activity.selectedTool == 4 && activity.panel.getVisibility() == android.view.View.VISIBLE, "Connection chip did not open its settings");
+                require(activity.selectedTool == 4 && activity.sheet.isShowing() && activity.panel.getVisibility() == android.view.View.VISIBLE, "Connection action did not open its native sheet");
+                activity.pairing = "stale pairing address";
+                activity.copy.performClick();
+                android.content.ClipData clip=activity.getSystemService(android.content.ClipboardManager.class).getPrimaryClip();
+                require(clip != null && clip.getItemAt(0).getText().toString().equals(activity.pairing) && activity.pairing.contains(activity.bridge.token),
+                    "Copy did not refresh the current pairing link");
+                require(clip.getDescription().getExtras()!=null && clip.getDescription().getExtras().getBoolean("android.content.extra.IS_SENSITIVE"),
+                    "Pairing credentials should not appear in clipboard previews");
+                activity.sheetRoot.findViewById(R.id.close_settings).performClick();
+                require(!activity.sheet.isShowing() && activity.selectedTool == -1, "Settings close action did not dismiss the sheet");
                 activity.select(-1); activity.format.performClick();
                 require(activity.selectedTool == 1, "Format readout did not open resolution controls");
                 activity.select(-1);
@@ -167,7 +202,9 @@ public final class ProcessingTest extends Instrumentation {
                 activity.onRequestPermissionsResult(1,new String[]{android.Manifest.permission.CAMERA},new int[]{android.content.pm.PackageManager.PERMISSION_GRANTED});
                 require(activity.bridge == null, "Camera or listener started while paused");
                 activity.resumed = true; activity.resumeCamera();
-                require(activity.bridge != null && activity.copy.isEnabled(), "Granted permission did not complete automatic connection startup");
+            });
+            await(() -> activity.bridge != null && activity.copy.isEnabled(), "Granted permission did not complete automatic connection startup");
+            runOnMainSync(() -> {
                 activity.onRequestPermissionsResult(1,new String[]{android.Manifest.permission.CAMERA},new int[]{android.content.pm.PackageManager.PERMISSION_DENIED});
                 require(activity.bridge == null, "Denied permission left connection available");
                 activity.getPreferences(android.content.Context.MODE_PRIVATE).edit().remove("password-key").remove("password-salt").apply();
@@ -179,13 +216,15 @@ public final class ProcessingTest extends Instrumentation {
                 require(activity.bridge != null && activity.bridge.credential != null && activity.password.length() == 0, "Saved password did not start protected discovery");
                 activity.password.setText("unsaved-draft"); activity.enable();
                 require(activity.bridge == null, "Unsaved password draft retained access with the old credential");
-                activity.password.setText(""); activity.resumeCamera();
+                require(activity.discardPassword.getVisibility()==android.view.View.VISIBLE,"Saved password draft has no discard action");
+                activity.discardPassword.performClick(); activity.resumeCamera();
                 require(activity.bridge != null && activity.bridge.credential != null, "Resume lost saved password protection");
                 activity.protect.setChecked(false);
                 require(activity.bridge != null && activity.bridge.credential == null, "Disabling password protection did not update discovery");
             });
             checks.put("permissionConnectionResume",true);
             checks.put("cameraFirstConnectionUI",true);
+            checks.put("connectionRetryAndClipboard",true);
             checkBridgeSync(activity);
             long first = activity.revision;
             int ev = activity.settings.optInt("ev");
@@ -221,6 +260,59 @@ public final class ProcessingTest extends Instrumentation {
         } finally { runOnMainSync(activity::finish); }
     }
 
+    MainActivity recreate(MainActivity activity) throws Exception {
+        ActivityMonitor monitor=addMonitor(MainActivity.class.getName(),null,false);
+        try {
+            runOnMainSync(activity::recreate);
+            MainActivity restored=(MainActivity)waitForMonitorWithTimeout(monitor,8000);
+            require(restored!=null && restored!=activity,"Configuration change did not recreate the UI");
+            await(() -> restored.previewReady && restored.controller!=null && restored.controller.session!=null,"Recreated preview did not open");
+            return restored;
+        } finally { removeMonitor(monitor); }
+    }
+    com.google.android.material.textfield.TextInputLayout field(android.view.View view,String label) {
+        if(view instanceof com.google.android.material.textfield.TextInputLayout input && label.contentEquals(input.getHint()))return input;
+        if(view instanceof android.view.ViewGroup group)for(int i=0;i<group.getChildCount();i++) {
+            var found=field(group.getChildAt(i),label); if(found!=null)return found;
+        }
+        return null;
+    }
+    void checkUiRestore() throws Exception {
+        MainActivity first=(MainActivity)startActivitySync(new android.content.Intent(getTargetContext(),MainActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+        MainActivity passwordRestored=null,editorRestored=null;
+        try {
+            await(() -> first.previewReady,"Preview was not ready for the UI restoration check");
+            runOnMainSync(() -> {
+                first.select(4);first.available.setChecked(true);first.protect.setChecked(true);
+                first.password.setText("fixture-password");first.savePassword.performClick();
+                require(first.bridge!=null && first.bridge.credential!=null,"Saved password fixture was not ready");
+                first.password.setText("pending-password-edit");
+            });
+            passwordRestored=recreate(first);MainActivity second=passwordRestored;
+            runOnMainSync(() -> {
+                require(second.selectedTool==4 && second.sheet.isShowing(),"Rotation lost the connection sheet");
+                require(second.password.getText().toString().equals("pending-password-edit") && second.bridge==null,"Rotation discarded or applied an unsaved password");
+                second.password.setText("");second.enable();
+                require(second.bridge==null && second.discardPassword.getVisibility()==android.view.View.VISIBLE,
+                    "An emptied password draft must stay paused with a discard action");
+                second.discardPassword.performClick();
+                require(second.bridge!=null,"Discarding an emptied draft did not restore the saved password");
+                second.protect.setChecked(false);second.select(1);
+                var input=field(second.cameraControlsView,second.getString(R.string.sensor_resolution));
+                require(input!=null,"Video resolution editor is missing");input.getEditText().requestFocus();input.getEditText().setText("640x400");
+            });
+            editorRestored=recreate(second);MainActivity third=editorRestored;
+            await(() -> {var input=field(third.cameraControlsView,third.getString(R.string.sensor_resolution));return input!=null && input.getEditText().getText().toString().equals("640x400");},"Rotation overwrote an unsaved camera edit");
+            runOnMainSync(() -> {
+                require(third.selectedTool==1 && third.sheet.isShowing(),"Rotation lost the video sheet");
+                require(third.settings.optInt("width")!=640 || third.settings.optInt("height")!=400,"Rotation applied an unsaved video edit");
+            });
+            checks.put("nativeSheetAndDraftRestore",true);
+        } finally {
+            MainActivity active=editorRestored!=null?editorRestored:passwordRestored!=null?passwordRestored:first;
+            runOnMainSync(active::finish);
+        }
+    }
     void checkBridgeSync(MainActivity activity) throws Exception {
         runOnMainSync(activity::enable);
         require(activity.bridge != null, "Native connection did not open");
@@ -297,7 +389,7 @@ public final class ProcessingTest extends Instrumentation {
         }
     }
     void checkRawTransfer(MainActivity activity,java.io.DataInputStream input) throws Exception {
-        android.content.ContentValues values=new android.content.ContentValues();values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,"OpenCam-transfer-fixture.dng");values.put(android.provider.MediaStore.Images.Media.MIME_TYPE,"image/x-adobe-dng");
+        android.content.ContentValues values=new android.content.ContentValues();values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,"OpenCam-transfer-"+java.util.UUID.randomUUID()+".dng");values.put(android.provider.MediaStore.Images.Media.MIME_TYPE,"image/x-adobe-dng");
         android.net.Uri uri=activity.getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);require(uri!=null,"RAW transfer fixture unavailable");
         try {
             byte[] expected=new byte[100003];for(int i=0;i<expected.length;i++)expected[i]=(byte)(i*13);

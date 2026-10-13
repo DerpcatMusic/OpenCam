@@ -1,0 +1,57 @@
+{
+  "origin": "native-device-capture",
+  "device": "Android API36 google_apis x86_64 emulator (OpenCam_API36)",
+  "capture": "adb -s emulator-5580 exec-out screencap -p",
+  "syntheticCamera": true,
+  "pixelEdits": false,
+  "embeddedOriginMetadata": true,
+  "sha256": "20af496500c050379b26c2a0e43fd469cda5495363ab24f134ddf1ef4be6a051",
+  "configuration": {
+    "name": "small-phone-keyboard-error",
+    "state": "connection sheet with keyboard and invalid password",
+    "nodes": {
+      "panel": {
+        "bounds": [
+          0,
+          319,
+          1080,
+          965
+        ],
+        "text": "",
+        "description": ""
+      },
+      "password": {
+        "bounds": [
+          81,
+          356,
+          999,
+          600
+        ],
+        "text": "short",
+        "description": ""
+      },
+      "save_password": {
+        "bounds": [
+          81,
+          883,
+          999,
+          965
+        ],
+        "text": "Save password",
+        "description": ""
+      },
+      "close_settings": {
+        "bounds": [
+          851,
+          109,
+          1026,
+          319
+        ],
+        "text": "",
+        "description": "Close settings"
+      }
+    },
+    "font_scale": "2.0",
+    "density": "Physical density: 420\nOverride density: 540"
+  }
+}

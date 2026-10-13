@@ -1137,18 +1137,28 @@ impl Studio {
         let editable = self.connected() && self.benchmark.is_none();
         dock("sources-dock")
             .flex_shrink_0()
+            .child(div().mx_3().mt_3().font_weight(gpui::FontWeight::MEDIUM).child("Connection"))
+            .when(!self.connected(), |d| {
+                let found = self.discovery.as_ref().is_some_and(|d| !d.phones.is_empty());
+                d.child(div().mx_3().mt_2().child(muted(if found {
+                    "Select a phone. Locked phones need their saved password."
+                } else {
+                    "Open OpenCam on your phone. Use the same local network, or paste a pairing link for USB."
+                })))
+            })
             .children(
                 self.discovery
                     .as_ref()
                     .into_iter()
-                    .flat_map(|d| d.phones.values())
-                    .map(|phone| {
+                    .flat_map(|d| d.phones.iter())
+                    .map(|(identity, phone)| {
                         let link = phone.link.clone();
+                        let protected = phone.protected;
                         button(
-                            format!("discovered-{}", phone.name),
+                            format!("discovered-{identity}"),
                             "",
-                            self.pairing == phone.link,
-                            true,
+                            self.active_pairing.as_ref().unwrap_or(&self.pairing) == &phone.link,
+                            !self.connecting,
                         )
                         .mx_2()
                         .mt_2()
@@ -1156,14 +1166,28 @@ impl Studio {
                         .gap_2()
                         .accessibility_label(format!("Connect to {}", phone.name))
                         .child(icon(if phone.protected { "lock" } else { "wifi" }))
-                        .child(phone.name.clone())
+                        .child(div().min_w(px(0.)).flex_1().overflow_hidden().text_ellipsis().child(phone.name.clone()))
                         .on_click(cx.listener(
                             move |this, _, window, cx| {
                                 this.pairing = link.clone();
                                 this.pairing_input.update(cx, |state, cx| {
                                     state.set_value(link.clone(), window, cx)
                                 });
-                                this.connect(false);
+                                if this.connected() && this.active_pairing.as_ref() == Some(&link) {
+                                    this.connection_error = None;
+                                    this.message("Connected",false);
+                                    cx.notify(); return;
+                                }
+                                let needs_password = protected && this.shared.password.lock().unwrap().is_empty();
+                                if needs_password {
+                                    this.disconnect();
+                                    this.prefer_usb = false;
+                                    this.tool = Some(0);
+                                    this.message("Enter the saved phone password, then connect", false);
+                                    this.password_input.update(cx, |state, cx| state.focus(window, cx));
+                                } else {
+                                    this.connect(false);
+                                }
                                 cx.notify();
                             },
                         ))
@@ -1175,7 +1199,7 @@ impl Studio {
                     "pairing-field",
                     "Phone pairing link",
                     &self.pairing_input,
-                    true,
+                    !self.connecting,
                     window,
                     cx,
                 )
@@ -1190,7 +1214,7 @@ impl Studio {
                     "phone-password",
                     "Phone password",
                     &self.password_input,
-                    true,
+                    !self.connecting,
                     window,
                     cx,
                 )
@@ -1198,6 +1222,25 @@ impl Studio {
                 .mb_3()
                 .h(px(28.)),
             )
+            .child(div().mx_3().mb_3().child(muted("Only needed when the phone requires a password. Press Enter to connect.")))
+            .child(
+                div().mx_3().mb_3().flex().gap_2()
+                    .child(button("connect-wifi", "Connect Wi-Fi", self.connected() && self.usb_port.is_none(), !self.connecting)
+                        .on_click(cx.listener(|this, _, _, cx| { this.connect(false); cx.notify(); })))
+                    .child(button("connect-usb", "Connect USB", self.usb_port.is_some(), !self.connecting)
+                        .on_click(cx.listener(|this, _, _, cx| { this.connect(true); cx.notify(); }))),
+            )
+            .when(self.connecting, |d| d.child(
+                button("cancel-connection", "Cancel connection", false, true).mx_3().mb_3()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.disconnect(); this.message("Connection canceled", false); cx.notify();
+                    })),
+            ))
+            .when_some(self.connection_error.as_ref(), |d, error| d.child(
+                div().mx_3().mb_3()
+                    .child(muted(super::connection::recovery_hint(error)))
+                    .child(div().mt_2().text_color(rgb(ERROR)).child(error.clone())),
+            ))
             .child(
                 div().id("lens-list").flex_shrink_0().px_2().children(
                     self.catalog["cameras"]
@@ -1690,14 +1733,24 @@ impl Studio {
             )
     }
     fn paste(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) {
-            let text: String = text
-                .chars()
-                .filter(|c| c.is_ascii() && !c.is_control())
-                .take(1024)
-                .collect();
-            self.pairing_input
-                .update(cx, |state, cx| state.set_value(text, window, cx));
+        let result = cx
+            .read_from_clipboard()
+            .and_then(|c| c.text())
+            .ok_or_else(|| anyhow::anyhow!("Copy the pairing link from OpenCam on your phone"))
+            .and_then(|text| super::connection::clipboard_pairing(&text));
+        self.tool = Some(0);
+        match result {
+            Ok(text) => {
+                self.pairing = text.clone();
+                self.pairing_input
+                    .update(cx, |state, cx| state.set_value(text, window, cx));
+                self.connection_error = None;
+                self.message("Pairing link pasted · choose Wi-Fi or USB", false);
+            }
+            Err(error) => {
+                self.connection_error = Some(error.to_string());
+                self.message("Clipboard does not contain a complete pairing link", true);
+            }
         }
     }
     fn preview(&self) -> AnyElement {
@@ -1707,18 +1760,58 @@ impl Studio {
                 .size_full()
                 .into_any_element()
         } else {
+            let (title, helper) = if self.connecting {
+                (
+                    "Connecting to phone…",
+                    "Connection interruptions retry automatically. You can cancel in Connection.",
+                )
+            } else if let Some(error) = &self.connection_error {
+                (
+                    "Connection needs attention",
+                    super::connection::recovery_hint(error),
+                )
+            } else if self.connected() {
+                if self.streaming {
+                    (
+                        "Waiting for camera frames",
+                        "Keep OpenCam open on the phone while streaming.",
+                    )
+                } else {
+                    (
+                        "Stream paused",
+                        "Start streaming to show the phone camera here.",
+                    )
+                }
+            } else {
+                (
+                    "Connect your phone",
+                    "Select a phone in Connection, or paste its pairing link and choose Wi-Fi or USB.",
+                )
+            };
             div()
                 .size_full()
                 .flex()
+                .flex_col()
+                .gap_3()
+                .p_4()
                 .items_center()
                 .justify_center()
-                .text_color(rgb(0x53555d))
+                .text_color(rgb(MUTED))
                 .child(
                     svg()
                         .path("icons/camera-off.svg")
                         .size(px(36.))
-                        .text_color(rgb(0x53555d)),
+                        .text_color(rgb(MUTED)),
                 )
+                .child(
+                    div()
+                        .text_color(rgb(INK))
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .child(title),
+                )
+                .when(self.tool.is_none(), |d| {
+                    d.child(div().max_w(px(320.)).text_center().child(helper))
+                })
                 .into_any_element()
         }
     }
@@ -1835,12 +1928,17 @@ impl Studio {
             .rounded(px(12.))
             .bg(rgb(SURFACE))
             .child(
-                icon_button("paste", "clipboard", "Paste pairing link", false, true).on_click(
-                    cx.listener(|this, _, window, cx| {
-                        this.paste(window, cx);
-                        cx.notify();
-                    }),
-                ),
+                icon_button(
+                    "paste",
+                    "clipboard",
+                    "Paste pairing link",
+                    false,
+                    !self.connecting,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.paste(window, cx);
+                    cx.notify();
+                })),
             )
             .child(
                 icon_button(
@@ -2131,7 +2229,7 @@ impl Render for Studio {
                         .flex_1()
                         .overflow_hidden()
                         .text_ellipsis()
-                        .text_color(rgb(if self.error { 0xf0a0a0 } else { MUTED }))
+                        .text_color(rgb(if self.error { ERROR } else { MUTED }))
                         .child(status),
                 )
                 .child(

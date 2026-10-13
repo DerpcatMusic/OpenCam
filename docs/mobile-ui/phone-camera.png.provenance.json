@@ -1,0 +1,37 @@
+{
+  "origin": "native-device-capture",
+  "device": "Android API36 google_apis x86_64 emulator (OpenCam_API36)",
+  "capture": "adb -s emulator-5580 exec-out screencap -p",
+  "syntheticCamera": true,
+  "pixelEdits": false,
+  "embeddedOriginMetadata": true,
+  "sha256": "596044438b34afa6a2e9898976b61dae9c7976b40a5a7492ba29888469a4314b",
+  "configuration": {
+    "name": "phone-camera",
+    "state": "camera sheet",
+    "nodes": {
+      "panel": {
+        "bounds": [
+          0,
+          1382,
+          1080,
+          2337
+        ],
+        "text": "",
+        "description": ""
+      },
+      "close_settings": {
+        "bounds": [
+          903,
+          1247,
+          1038,
+          1382
+        ],
+        "text": "",
+        "description": "Close settings"
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420"
+  }
+}

@@ -1,0 +1,15 @@
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+ xmlns:app="http://schemas.android.com/apk/res-auto" android:id="@+id/tools" android:layout_width="match_parent" android:layout_height="wrap_content">
+ <com.google.android.material.button.MaterialButton android:id="@+id/tool_camera" style="@style/Widget.OpenCam.Tool"
+  android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/camera" app:icon="@drawable/ic_camera" />
+ <com.google.android.material.button.MaterialButton android:id="@+id/tool_video" style="@style/Widget.OpenCam.Tool"
+  android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/video" app:icon="@drawable/ic_video" />
+ <com.google.android.material.button.MaterialButton android:id="@+id/tool_sensor" style="@style/Widget.OpenCam.Tool"
+  android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/exposure" app:icon="@drawable/ic_settings" />
+ <com.google.android.material.button.MaterialButton android:id="@+id/tool_effects" style="@style/Widget.OpenCam.Tool"
+  android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/effects" app:icon="@drawable/ic_effects" />
+ <androidx.constraintlayout.helper.widget.Flow android:layout_width="0dp" android:layout_height="wrap_content"
+  app:constraint_referenced_ids="tool_camera,tool_video,tool_sensor,tool_effects" app:flow_wrapMode="chain" app:flow_maxElementsWrap="2"
+  app:flow_horizontalStyle="packed" app:flow_horizontalGap="@dimen/space_compact" app:flow_verticalGap="@dimen/space_compact"
+  app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toTopOf="parent" app:layout_constraintBottom_toBottomOf="parent" />
+</androidx.constraintlayout.widget.ConstraintLayout>

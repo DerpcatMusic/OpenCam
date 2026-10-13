@@ -1,0 +1,87 @@
+{
+  "origin": "native-device-capture",
+  "device": "Android API36 google_apis x86_64 emulator (OpenCam_API36)",
+  "capture": "adb -s emulator-5580 exec-out screencap -p",
+  "syntheticCamera": true,
+  "pixelEdits": false,
+  "embeddedOriginMetadata": true,
+  "sha256": "568ad7eef65e8a17815121337f1ecc69f1712ad47a4b5c25236c53382bd37b89",
+  "configuration": {
+    "name": "phone-rtl",
+    "state": "forced RTL with English labels; mirrored configuration after reboot",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          694,
+          181,
+          1038,
+          239
+        ],
+        "text": "Ready to connect",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          42,
+          178,
+          449,
+          304
+        ],
+        "text": "Connection",
+        "description": "Ready to connect. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          42,
+          346,
+          1038,
+          1904
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          534,
+          2022,
+          876,
+          2148
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          205,
+          2022,
+          513,
+          2148
+        ],
+        "text": "Video",
+        "description": "1280 \u00d7 720 \u00b7 30 fps. Open video settings."
+      },
+      "tool_sensor": {
+        "bounds": [
+          531,
+          2169,
+          900,
+          2295
+        ],
+        "text": "Exposure",
+        "description": ""
+      },
+      "tool_effects": {
+        "bounds": [
+          181,
+          2169,
+          510,
+          2295
+        ],
+        "text": "Effects",
+        "description": ""
+      }
+    },
+    "font_scale": "1",
+    "density": "Physical density: 420"
+  }
+}

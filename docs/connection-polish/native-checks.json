@@ -1,0 +1,53 @@
+{
+  "device": "sdk_gphone64_x86_64",
+  "syntheticInput": true,
+  "warpChangedPixels": 12879,
+  "outputWidth": 160,
+  "outputHeight": 120,
+  "gpu": {
+    "mode": "phone GPU",
+    "frameSubmitMs": 262.817073,
+    "frames": 4,
+    "ml": {
+      "delegate": "warming up",
+      "inferenceMs": 0,
+      "cpuMs": null,
+      "gpuMs": null,
+      "maskAgeMs": null
+    }
+  },
+  "segmentation": {
+    "delegate": "CPU",
+    "inferenceMs": 3.838764,
+    "cpuMs": 3.8411813333333336,
+    "gpuMs": null,
+    "maskAgeMs": 75
+  },
+  "previewOrientation": true,
+  "permissionConnectionResume": true,
+  "cameraFirstConnectionUI": true,
+  "connectionRetryAndClipboard": true,
+  "heartbeatKeepsPeerAlive": true,
+  "opencam.i420": {
+    "frameBytes": 1382400,
+    "encoderBypassed": true,
+    "heartbeatDuringVideo": true
+  },
+  "opencam.rgba": {
+    "frameBytes": 3686400,
+    "encoderBypassed": true,
+    "heartbeatDuringVideo": true
+  },
+  "rawDNGTransfer": true,
+  "idlePeerExpired": true,
+  "tlsControlSync": true,
+  "rawErrorPreviewRestored": true,
+  "cameraSync": {
+    "localRevision": 6,
+    "remoteRevision": 8,
+    "staleRejected": true,
+    "previewWithoutEncoder": true,
+    "cameraPaths": 4
+  },
+  "nativeSheetAndDraftRestore": true
+}

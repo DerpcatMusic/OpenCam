@@ -1,0 +1,9 @@
+<resources>
+    <dimen name="space_micro">4dp</dimen>
+    <dimen name="space_compact">8dp</dimen>
+    <dimen name="space_control">12dp</dimen>
+    <dimen name="space_section">24dp</dimen>
+    <dimen name="content_gutter">16dp</dimen>
+    <dimen name="touch_target_min">48dp</dimen>
+    <dimen name="icon_action">24dp</dimen>
+</resources>

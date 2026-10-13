@@ -1,0 +1,87 @@
+{
+  "origin": "native-device-capture",
+  "device": "Android API36 google_apis x86_64 emulator (OpenCam_API36)",
+  "capture": "adb -s emulator-5580 exec-out screencap -p",
+  "syntheticCamera": true,
+  "pixelEdits": false,
+  "embeddedOriginMetadata": true,
+  "sha256": "2595bf26c4c601eb1fc922c7ea04764554b3cac00f8da178aae98f0f5be46325",
+  "configuration": {
+    "name": "tablet",
+    "state": "home",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          24,
+          134,
+          248,
+          168
+        ],
+        "text": "Save your password",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          946,
+          133,
+          1176,
+          205
+        ],
+        "text": "Connection",
+        "description": "Save your password. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          24,
+          229,
+          940,
+          1848
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          964,
+          273,
+          1176,
+          345
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          964,
+          357,
+          1176,
+          429
+        ],
+        "text": "Video",
+        "description": "1280 \u00d7 720 \u00b7 30 fps. Open video settings."
+      },
+      "tool_sensor": {
+        "bounds": [
+          964,
+          441,
+          1176,
+          513
+        ],
+        "text": "Exposure",
+        "description": ""
+      },
+      "tool_effects": {
+        "bounds": [
+          964,
+          525,
+          1176,
+          597
+        ],
+        "text": "Effects",
+        "description": ""
+      }
+    },
+    "font_scale": "1.0",
+    "density": "Physical density: 420\nOverride density: 240"
+  }
+}

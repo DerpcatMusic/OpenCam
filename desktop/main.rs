@@ -1,6 +1,7 @@
 mod assets;
 mod auth;
 mod benchmark;
+mod connection;
 mod discovery;
 mod frost;
 mod media;
@@ -27,6 +28,7 @@ use std::{
 
 const BG: u32 = 0x060606;
 const SURFACE: u32 = 0x0d0d0d;
+const ERROR: u32 = 0xf0a0a0;
 const LINE: u32 = 0x252525;
 const INK: u32 = 0xe8e8e8;
 const MUTED: u32 = 0xa8a8a8;
@@ -76,6 +78,9 @@ struct Studio {
     preview: Option<Arc<RenderImage>>,
     status: String,
     error: bool,
+    connection_error: Option<String>,
+    prefer_usb: bool,
+    active_pairing: Option<String>,
     streaming: bool,
     tool: Option<u8>,
     monitor: monitor::Monitor,
@@ -184,7 +189,7 @@ impl Studio {
             window,
             |this, _, event: &gpui_base::input::InputEvent, _, cx| {
                 if matches!(event, gpui_base::input::InputEvent::PressEnter { .. }) {
-                    this.connect(false);
+                    this.connect(this.prefer_usb);
                     cx.notify();
                 }
             },
@@ -203,6 +208,16 @@ impl Studio {
                 }
             },
         ));
+        format_subscriptions.push(cx.subscribe_in(
+            &password_input,
+            window,
+            |this, _, event: &gpui_base::input::InputEvent, _, cx| {
+                if matches!(event, gpui_base::input::InputEvent::PressEnter { .. }) {
+                    this.connect(this.prefer_usb);
+                    cx.notify();
+                }
+            },
+        ));
         let discovery = discovery::Discovery::new();
         let discovery_error = discovery.as_ref().err().map(ToString::to_string);
         let mut studio = Self {
@@ -215,8 +230,13 @@ impl Studio {
             session: None,
             shared: session::Shared::new(video_device),
             preview: None,
-            status: discovery_error.unwrap_or("Disconnected".into()),
-            error: false,
+            status: discovery_error
+                .clone()
+                .unwrap_or("Select a phone or paste its pairing link".into()),
+            error: discovery_error.is_some(),
+            connection_error: discovery_error,
+            prefer_usb: false,
+            active_pairing: None,
             streaming: false,
             tool: Some(0),
             monitor: monitor::Monitor {
@@ -282,9 +302,13 @@ impl Studio {
         if self.connecting {
             return;
         }
+        self.prefer_usb = usb;
+        self.connection_error = None;
         let pairing = match protocol::Pairing::parse(&self.pairing) {
             Ok(pairing) => pairing,
             Err(e) => {
+                self.connection_error = Some(e.to_string());
+                self.tool = Some(0);
                 self.message(e.to_string(), true);
                 return;
             }
@@ -346,6 +370,7 @@ impl Studio {
         }
     }
     fn start_session(&mut self, pairing: protocol::Pairing) {
+        self.active_pairing = Some(self.pairing.clone());
         *self.shared.stats.lock().unwrap() = session::Stats::default();
         *self.shared.frame.lock().unwrap() = None;
         self.last_stats = (Instant::now(), session::Stats::default());
@@ -359,6 +384,9 @@ impl Studio {
         self.catalog = Value::Null;
         self.metadata = Value::Null;
         self.processing_report = Value::Null;
+        self.preview = None;
+        self.connection_error = None;
+        self.active_pairing = None;
         self.streaming = false;
         self.connecting = false;
         self.dirty = None;
@@ -610,7 +638,10 @@ impl Studio {
                 }
             } else {
                 self.connecting = false;
-                self.message(event["message"].as_str().unwrap_or("USB failed"), true);
+                let message = event["message"].as_str().unwrap_or("USB failed").to_owned();
+                self.connection_error = Some(message.clone());
+                self.tool = Some(0);
+                self.message(message, true);
             }
         }
         let events: Vec<Value> = self
@@ -674,6 +705,7 @@ impl Studio {
                         });
                     }
                     self.connecting = false;
+                    self.connection_error = None;
                     self.message("Connected", false);
                     if !self.settings.is_null() {
                         self.tool = Some(1);
@@ -718,6 +750,15 @@ impl Studio {
                     self.streaming = false;
                     self.dirty = None;
                     self.benchmark = None;
+                    self.preview = None;
+                    *self.shared.frame.lock().unwrap() = None;
+                    self.tool = Some(0);
+                    self.connection_error = Some(
+                        event["message"]
+                            .as_str()
+                            .unwrap_or("Connection interrupted")
+                            .to_owned(),
+                    );
                     self.message(
                         format!("Reconnecting · attempt {}", event["attempt"]),
                         false,
@@ -757,11 +798,14 @@ impl Studio {
                     self.message(event["message"].as_str().unwrap_or("Camera error"), true)
                 }
                 Some("disconnected") => {
+                    let message = event["message"]
+                        .as_str()
+                        .unwrap_or("Phone disconnected")
+                        .to_owned();
                     self.disconnect();
-                    self.message(
-                        event["message"].as_str().unwrap_or("Phone disconnected"),
-                        true,
-                    );
+                    self.connection_error = Some(message.clone());
+                    self.tool = Some(0);
+                    self.message(message, true);
                 }
                 _ => {}
             }
@@ -853,6 +897,10 @@ impl Drop for Studio {
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--version") {
+        println!("OpenCam {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
     let argument = |key: &str| {
         args.iter()
             .position(|a| a == key)
@@ -887,6 +935,7 @@ fn main() -> Result<()> {
             let bounds = Bounds::centered(None, size(px(1280.), px(800.)), cx);
             let result = cx.open_window(
                 WindowOptions {
+                    app_id: Some("dev.opencam.OpenCam".into()),
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     window_min_size: Some(size(px(800.), px(560.))),
                     titlebar: Some(gpui::TitlebarOptions {

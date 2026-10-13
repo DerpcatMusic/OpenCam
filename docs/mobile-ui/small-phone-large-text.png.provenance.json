@@ -1,0 +1,67 @@
+{
+  "origin": "native-device-capture",
+  "device": "Android API36 google_apis x86_64 emulator (OpenCam_API36)",
+  "capture": "adb -s emulator-5580 exec-out screencap -p",
+  "syntheticCamera": true,
+  "pixelEdits": false,
+  "embeddedOriginMetadata": true,
+  "sha256": "0578f23a8922d1476a6b52973fcf83f69f10e13b4a44e280669a967e8f71de60",
+  "configuration": {
+    "name": "small-phone-large-text",
+    "state": "home",
+    "nodes": {
+      "connection_state": {
+        "bounds": [
+          54,
+          163,
+          829,
+          293
+        ],
+        "text": "Ready to connect",
+        "description": ""
+      },
+      "status": {
+        "bounds": [
+          54,
+          454,
+          787,
+          640
+        ],
+        "text": "Connection",
+        "description": "Ready to connect. Open connection settings."
+      },
+      "preview": {
+        "bounds": [
+          54,
+          694,
+          1026,
+          1159
+        ],
+        "text": "",
+        "description": "Camera preview"
+      },
+      "tool_camera": {
+        "bounds": [
+          248,
+          1364,
+          832,
+          1550
+        ],
+        "text": "Camera",
+        "description": ""
+      },
+      "tool_video": {
+        "bounds": [
+          291,
+          1577,
+          790,
+          1763
+        ],
+        "text": "Video",
+        "description": "1280 \u00d7 720 \u00b7 30 fps. Open video settings."
+      }
+    },
+    "font_scale": "2.0",
+    "density": "Physical density: 420\nOverride density: 540"
+  }
+}

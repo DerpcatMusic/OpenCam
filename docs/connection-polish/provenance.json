@@ -1,0 +1,92 @@
+{
+  "desktop-empty.png": {
+    "sha256": "a109aa986c0dd6c43c81c1f9c9ca026118bbac10b06a655692ac6bb4ce27e9ec",
+    "origin": "native Linux window",
+    "syntheticCameraInput": false
+  },
+  "phone-camera.png": {
+    "sha256": "3d9c62dd210c5d00a9167c9ec906ffc77ba1d88bb86e15deb56304f897cac421",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-connection-off.png": {
+    "sha256": "8d9ef11fb68349caab6b3dab3944b8db26df5b01b7ec04195274d548b0691d3f",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-connection.png": {
+    "sha256": "163868d892da2da0d8a5c13b2b67a270976dc9e88eb953af7c1ccaaad06cad19",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-copy-feedback.png": {
+    "sha256": "ad5045ad257aec6346ff15fb09ffcd4b8efb35a0b24b8bee4bdcd71f6914cb1f",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-dark.png": {
+    "sha256": "6649a4fcde81f58ee855a831cebbdacab6296129d1f6602289d6160166ba3283",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-effects.png": {
+    "sha256": "9fca74a82fb9920e308b7e67bff7d4a9d30587cb735569bd99fe1ad54e851763",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-exposure.png": {
+    "sha256": "c2214966d5d6e0c747626b6ae3895cc451a940a65de463dc8db08e11429d1c39",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-landscape.png": {
+    "sha256": "0c146d0bc68e78ae1e0b04a63ba6e71dce69063b1e0d04faa98e2d03ee0f33b0",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-light.png": {
+    "sha256": "1f205c9e557d02c10bdc72382d0d020d5409cd28f6533f0ab866a128cb54c5bd",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-retry-error.png": {
+    "sha256": "2d7981ab784c7373e820778c71477610ecd9db543be05c41fc307c1e1a90555e",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-retry-recovered.png": {
+    "sha256": "cf5a0d854d41ade547659f9c149e757e4b8bb62405739815831cccc071fe6054",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "phone-video.png": {
+    "sha256": "bd5a735bf598a86046e72e19b812c6dae71dea58a1d2f47048cdf450d4d05198",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "small-phone-keyboard-error.png": {
+    "sha256": "f5944bd6fe9e602287cf482982193529e08a75b4705460aa9515f695f82dcd1c",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "small-phone-large-text.png": {
+    "sha256": "b2f24413a976205774b4c8acdf7449ecac498c922ee03df74339bd899c889bd7",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "tablet-camera.png": {
+    "sha256": "3a4653ffbc2f2e6ed69102416c216012a976e786adeec014552cb8d88f027ace",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "tablet-landscape.png": {
+    "sha256": "8b254481c54e6f0d8869257f2a9e4f650161daa63a0a5d71bd111b319d0086b7",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  },
+  "tablet.png": {
+    "sha256": "130d9272ce6ed29917b6f924308680cd68a7226b398418e9c3ef0d6fee9fda98",
+    "origin": "native API 36 emulator screenshot",
+    "syntheticCameraInput": true
+  }
+}

@@ -313,6 +313,8 @@ final class CameraController implements AutoCloseable {
         previewHeight = processor == null ? previewSize.getHeight() : h;
         MediaCodec activeEncoder = encoder;
         String codecMime = mime;
+        if (context.checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            throw new SecurityException("Camera permission is required. Allow camera access in Android settings.");
         catalog.manager.openCamera(lens.openId(), new CameraDevice.StateCallback() {
             @Override public void onOpened(CameraDevice device) {
                 if (epoch != generation) { device.close(); return; }
@@ -524,6 +526,8 @@ final class CameraController implements AutoCloseable {
             saveRaw(epoch);
         }, handler);
         send(Json.object("type", "stopped", "message", "RAW capture pauses video briefly; capture resumes automatically"));
+        if (context.checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            throw new SecurityException("Camera permission is required. Allow camera access in Android settings.");
         catalog.manager.openCamera(lens.openId(), new CameraDevice.StateCallback() {
             @Override public void onOpened(CameraDevice device) {
                 if (epoch != generation) { device.close(); return; }

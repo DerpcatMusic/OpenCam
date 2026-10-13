@@ -136,7 +136,11 @@ final class PhoneProcessor implements AutoCloseable {
     int program(String fragment) throws Exception {
         String vertex="#version 300 es\nlayout(location=0) in vec2 position; out vec2 uv; void main(){gl_Position=vec4(position,0,1);uv=(position+1.0)*0.5;}";
         String source;
-        try (var stream=context.getAssets().open(fragment)) { source=new String(stream.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8); }
+        try (var stream=context.getAssets().open(fragment); var bytes=new java.io.ByteArrayOutputStream()) {
+            byte[] buffer=new byte[8192]; int count;
+            while((count=stream.read(buffer))!=-1)bytes.write(buffer,0,count);
+            source=bytes.toString(java.nio.charset.StandardCharsets.UTF_8.name());
+        }
         int v=shader(GLES30.GL_VERTEX_SHADER,vertex), f=shader(GLES30.GL_FRAGMENT_SHADER,source), p=GLES30.glCreateProgram();
         GLES30.glAttachShader(p,v); GLES30.glAttachShader(p,f); GLES30.glLinkProgram(p);
         GLES30.glDeleteShader(v); GLES30.glDeleteShader(f);
