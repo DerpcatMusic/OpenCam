@@ -156,6 +156,15 @@ public final class ProcessingTest extends Instrumentation {
                 Bridge opened = activity.bridge; activity.enable();
                 require(activity.bridge == opened, "Repeated resume replaced the active listener");
                 require(activity.connectionState.getText().toString().equals(activity.getString(R.string.ready_to_connect)), "Unpaired camera status is misleading");
+                activity.disable();
+                try (java.net.ServerSocket occupied = new java.net.ServerSocket(Bridge.PORT)) {
+                    activity.enable();
+                    require(activity.bridge == null && activity.connectionFailure != null && activity.retryConnection.getVisibility() == android.view.View.VISIBLE,
+                        "A busy listener must show a persistent connection error and retry action");
+                } catch (java.io.IOException e) { throw new AssertionError("Could not reserve the test listener",e); }
+                activity.retryConnection.performClick();
+                require(activity.bridge != null && activity.connectionFailure == null && activity.retryConnection.getVisibility() == android.view.View.GONE,
+                    "Connection retry did not restore discovery");
                 android.graphics.Rect previewBounds=new android.graphics.Rect();
                 require(activity.preview.getGlobalVisibleRect(previewBounds), "Camera preview has no visible space");
                 int target=activity.getResources().getDimensionPixelSize(R.dimen.touch_target_min);
@@ -175,6 +184,13 @@ public final class ProcessingTest extends Instrumentation {
                 }
                 activity.status.performClick();
                 require(activity.selectedTool == 4 && activity.sheet.isShowing() && activity.panel.getVisibility() == android.view.View.VISIBLE, "Connection action did not open its native sheet");
+                activity.pairing = "stale pairing address";
+                activity.copy.performClick();
+                android.content.ClipData clip=activity.getSystemService(android.content.ClipboardManager.class).getPrimaryClip();
+                require(clip != null && clip.getItemAt(0).getText().toString().equals(activity.pairing) && activity.pairing.contains(activity.bridge.token),
+                    "Copy did not refresh the current pairing link");
+                require(clip.getDescription().getExtras()!=null && clip.getDescription().getExtras().getBoolean("android.content.extra.IS_SENSITIVE"),
+                    "Pairing credentials should not appear in clipboard previews");
                 activity.sheetRoot.findViewById(R.id.close_settings).performClick();
                 require(!activity.sheet.isShowing() && activity.selectedTool == -1, "Settings close action did not dismiss the sheet");
                 activity.select(-1); activity.format.performClick();
@@ -186,8 +202,9 @@ public final class ProcessingTest extends Instrumentation {
                 activity.onRequestPermissionsResult(1,new String[]{android.Manifest.permission.CAMERA},new int[]{android.content.pm.PackageManager.PERMISSION_GRANTED});
                 require(activity.bridge == null, "Camera or listener started while paused");
                 activity.resumed = true; activity.resumeCamera();
-                require(activity.bridge != null && activity.copy.isEnabled(), "Granted permission did not complete automatic connection startup: " + activity.connectionDetail.getText()
-                    + " (available="+activity.available.isChecked()+", protected="+activity.protect.isChecked()+", draftLength="+activity.password.length()+")");
+            });
+            await(() -> activity.bridge != null && activity.copy.isEnabled(), "Granted permission did not complete automatic connection startup");
+            runOnMainSync(() -> {
                 activity.onRequestPermissionsResult(1,new String[]{android.Manifest.permission.CAMERA},new int[]{android.content.pm.PackageManager.PERMISSION_DENIED});
                 require(activity.bridge == null, "Denied permission left connection available");
                 activity.getPreferences(android.content.Context.MODE_PRIVATE).edit().remove("password-key").remove("password-salt").apply();
@@ -207,6 +224,7 @@ public final class ProcessingTest extends Instrumentation {
             });
             checks.put("permissionConnectionResume",true);
             checks.put("cameraFirstConnectionUI",true);
+            checks.put("connectionRetryAndClipboard",true);
             checkBridgeSync(activity);
             long first = activity.revision;
             int ev = activity.settings.optInt("ev");
@@ -264,12 +282,22 @@ public final class ProcessingTest extends Instrumentation {
         MainActivity passwordRestored=null,editorRestored=null;
         try {
             await(() -> first.previewReady,"Preview was not ready for the UI restoration check");
-            runOnMainSync(() -> { first.select(4);first.protect.setChecked(true);first.password.setText("pending-password-edit"); });
+            runOnMainSync(() -> {
+                first.select(4);first.available.setChecked(true);first.protect.setChecked(true);
+                first.password.setText("fixture-password");first.savePassword.performClick();
+                require(first.bridge!=null && first.bridge.credential!=null,"Saved password fixture was not ready");
+                first.password.setText("pending-password-edit");
+            });
             passwordRestored=recreate(first);MainActivity second=passwordRestored;
             runOnMainSync(() -> {
                 require(second.selectedTool==4 && second.sheet.isShowing(),"Rotation lost the connection sheet");
                 require(second.password.getText().toString().equals("pending-password-edit") && second.bridge==null,"Rotation discarded or applied an unsaved password");
-                second.discardPassword.performClick();second.protect.setChecked(false);second.select(1);
+                second.password.setText("");second.enable();
+                require(second.bridge==null && second.discardPassword.getVisibility()==android.view.View.VISIBLE,
+                    "An emptied password draft must stay paused with a discard action");
+                second.discardPassword.performClick();
+                require(second.bridge!=null,"Discarding an emptied draft did not restore the saved password");
+                second.protect.setChecked(false);second.select(1);
                 var input=field(second.cameraControlsView,second.getString(R.string.sensor_resolution));
                 require(input!=null,"Video resolution editor is missing");input.getEditText().requestFocus();input.getEditText().setText("640x400");
             });
@@ -361,7 +389,7 @@ public final class ProcessingTest extends Instrumentation {
         }
     }
     void checkRawTransfer(MainActivity activity,java.io.DataInputStream input) throws Exception {
-        android.content.ContentValues values=new android.content.ContentValues();values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,"OpenCam-transfer-fixture.dng");values.put(android.provider.MediaStore.Images.Media.MIME_TYPE,"image/x-adobe-dng");
+        android.content.ContentValues values=new android.content.ContentValues();values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,"OpenCam-transfer-"+java.util.UUID.randomUUID()+".dng");values.put(android.provider.MediaStore.Images.Media.MIME_TYPE,"image/x-adobe-dng");
         android.net.Uri uri=activity.getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);require(uri!=null,"RAW transfer fixture unavailable");
         try {
             byte[] expected=new byte[100003];for(int i=0;i<expected.length;i++)expected[i]=(byte)(i*13);

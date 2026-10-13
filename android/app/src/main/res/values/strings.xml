@@ -131,4 +131,16 @@
     <string name="manual_focus_help">Editing focus turns off autofocus.</string>
     <string name="manual_exposure_help">Editing ISO or shutter enables manual exposure.</string>
     <string name="phone_effects_help">These effects run on this phone and appear in its preview and desktop video.</string>
+    <string name="retry_connection">Retry connection</string>
+    <string name="password_changes_pending">Password changes pending</string>
+    <string name="pairing_retry_help">Retry the desktop connection. Your local camera preview can stay open.</string>
+    <string name="connection_needs_attention">Connection needs attention</string>
+    <string name="camera_initializing">Preparing camera</string>
+    <string name="connection_endpoint">Phone address: %1$s</string>
+    <string name="network_pairing_help">Use the same local network for Wi-Fi. USB uses this pairing link too.</string>
+    <string name="usb_pairing_help">Ready for USB. For Wi-Fi, connect this phone to your computer’s local network and copy a fresh link.</string>
+    <string name="pairing_camera_needed">Allow camera access to make this phone available to your desktop.</string>
+    <string name="pairing_disabled">Desktop connections are off. Turn on Available to desktops when you want to connect.</string>
+    <string name="pairing_password_needed">Save your password before connecting. Discard an edit to keep using the saved password.</string>
+    <string name="pairing_starting">Preparing desktop connection. Keep OpenCam open.</string>
 </resources>

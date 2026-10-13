@@ -35,13 +35,16 @@
      android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="@dimen/touch_target_min" android:text="@string/discard_password" android:visibility="gone" />
     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_section"
      android:text="@string/pairing" android:textAppearance="@style/TextAppearance.OpenCam.Section" android:accessibilityHeading="true" />
-    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_compact"
+    <TextView android:id="@+id/pairing_help" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_compact"
      android:text="@string/pairing_help" android:textAppearance="@style/TextAppearance.OpenCam.Supporting" />
     <TextView android:id="@+id/connection_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_control"
      android:textAppearance="@style/TextAppearance.OpenCam.Supporting" android:textIsSelectable="true" android:accessibilityLiveRegion="polite" />
     <com.google.android.material.button.MaterialButton android:id="@+id/copy" style="@style/Widget.OpenCam.Action"
      android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_control"
      android:text="@string/copy_pairing_link" android:enabled="false" app:icon="@drawable/ic_clipboard" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/retry_connection" style="@style/Widget.OpenCam.Action"
+     android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_control"
+     android:text="@string/retry_connection" android:visibility="gone" />
    </LinearLayout>
   </LinearLayout>
  </androidx.core.widget.NestedScrollView>

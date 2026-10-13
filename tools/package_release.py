@@ -49,6 +49,8 @@ def main():
         shutil.copy2(args.binaries / filename, binaries / filename)
     for filename in ['README.md', 'LICENSE']:
         shutil.copy2(filename, folder)
+    if system == 'Linux':
+        shutil.copy2('tools/install_desktop.py', folder / 'install-desktop.py')
     shutil.copytree('vendor', folder / 'vendor')
     (folder / 'fonts').mkdir()
     shutil.copy2('desktop/fonts/OFL.txt', folder / 'fonts')

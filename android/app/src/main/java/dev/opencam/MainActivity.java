@@ -25,18 +25,19 @@ import org.json.JSONObject;
 public final class MainActivity extends AppCompatActivity implements Bridge.Listener {
     Bridge bridge;
     CameraController controller;
-    TextView connectionDetail, connectionState, cameraState, sheetTitle, emptyTitle, emptyDetail, videoSummary;
+    TextView connectionDetail, connectionState, cameraState, sheetTitle, emptyTitle, emptyDetail, videoSummary, pairingHelp;
     View cameraEmpty, sheetRoot, passwordHelp, connectionControlsView, cameraControlsView;
     BottomSheetDialog sheet;
     Button discardPassword;
     int restoredTool = -1, restoredScroll;
-    String cameraFailure;
+    String cameraFailure, connectionFailure;
     PasswordDraft passwordDraft;
     public static final class PasswordDraft extends androidx.lifecycle.ViewModel {
         String value = "";
-        @Override protected void onCleared() { value = ""; }
+        boolean edited;
+        @Override protected void onCleared() { value = ""; edited = false; }
     }
-    Button status, copy, format, cameraAccess, savePassword;
+    Button status, copy, format, cameraAccess, savePassword, retryConnection;
     MaterialSwitch protect, available;
     TextInputLayout passwordField;
     EditText password;
@@ -140,6 +141,9 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         password = sheetRoot.findViewById(R.id.password);
         passwordField = sheetRoot.findViewById(R.id.password_field);
         copy = sheetRoot.findViewById(R.id.copy);
+        pairingHelp = sheetRoot.findViewById(R.id.pairing_help);
+        retryConnection = sheetRoot.findViewById(R.id.retry_connection);
+        retryConnection.setOnClickListener(v -> { enable(); refreshStatus(); });
         passwordHelp = sheetRoot.findViewById(R.id.password_help);
         discardPassword = sheetRoot.findViewById(R.id.discard_password);
         sheetRoot.findViewById(R.id.close_settings).setOnClickListener(v -> select(-1));
@@ -159,13 +163,14 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             passwordField.setVisibility(checked ? View.VISIBLE : View.GONE);
             savePassword.setVisibility(checked ? View.VISIBLE : View.GONE);
             passwordHelp.setVisibility(checked ? View.VISIBLE : View.GONE);
-            if (!checked) password.setText("");
+            if (!checked) { password.setText(""); passwordDraft.edited = false; }
             enable(); refreshStatus();
         });
         password.addTextChangedListener(new android.text.TextWatcher() {
             public void beforeTextChanged(CharSequence s,int start,int count,int after) { }
             public void onTextChanged(CharSequence s,int start,int before,int count) {
                 passwordDraft.value = s.toString();
+                passwordDraft.edited = true;
                 if (bridge != null) disable(); passwordField.setError(null);
                 discardPassword.setVisibility(s.length() > 0 && getPreferences(MODE_PRIVATE).contains("password-key") ? View.VISIBLE : View.GONE);
                 refreshStatus();
@@ -175,7 +180,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         status.setOnClickListener(v -> select(selectedTool == 4 ? -1 : 4));
         format.setOnClickListener(v -> select(selectedTool == 1 ? -1 : 1));
         cameraAccess.setOnClickListener(v -> requestCamera());
-        discardPassword.setOnClickListener(v -> { password.setText(""); enable(); refreshStatus(); });
+        discardPassword.setOnClickListener(v -> { password.setText(""); passwordDraft.edited = false; enable(); refreshStatus(); });
         password.setOnEditorActionListener((v, action, event) -> {
             if (action == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) { savePassword.performClick(); return true; }
             return false;
@@ -186,6 +191,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
                 disable();
                 getPreferences(MODE_PRIVATE).edit().putString("password-salt",Bridge.hex(salt)).putString("password-key",Bridge.hex(key)).apply();
                 password.setText(""); passwordField.setPlaceholderText(getString(R.string.saved_password));
+                passwordDraft.edited = false;
                 ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(password.getWindowToken(),0);
                 enable();
             } catch (Exception e) {
@@ -197,14 +203,27 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             }
         });
         copy.setOnClickListener(v -> {
+            if (bridge == null) return;
+            refreshPairingAddress();
             ClipboardManager clipboard = getSystemService(ClipboardManager.class);
-            clipboard.setPrimaryClip(ClipData.newPlainText("OpenCam pairing", pairing));
-            com.google.android.material.snackbar.Snackbar.make(content,getString(R.string.pairing_link_copied),com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show();
+            ClipData clip = ClipData.newPlainText("OpenCam pairing", pairing);
+            android.os.PersistableBundle extras = new android.os.PersistableBundle();
+            extras.putBoolean("android.content.extra.IS_SENSITIVE",true);
+            clip.getDescription().setExtras(extras);
+            clipboard.setPrimaryClip(clip);
+            com.google.android.material.snackbar.Snackbar.make(sheet.isShowing()?sheetRoot:content,getString(R.string.pairing_link_copied),com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show();
         });
         if (!passwordDraft.value.isEmpty()) password.setText(passwordDraft.value);
     }
 
     String address() throws SocketException {
+        android.net.ConnectivityManager network = getSystemService(android.net.ConnectivityManager.class);
+        android.net.Network active = network == null ? null : network.getActiveNetwork();
+        android.net.LinkProperties properties = active == null ? null : network.getLinkProperties(active);
+        if (properties != null) for (android.net.LinkAddress link : properties.getLinkAddresses()) {
+            InetAddress ip = link.getAddress();
+            if (ip instanceof Inet4Address && ip.isSiteLocalAddress()) return ip.getHostAddress();
+        }
         for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
             if (!iface.isUp() || iface.isLoopback()) continue;
             for (InetAddress ip : Collections.list(iface.getInetAddresses()))
@@ -213,26 +232,40 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         return "127.0.0.1";
     }
 
+    void refreshPairingAddress() {
+        if (bridge == null) return;
+        String host;
+        try { host = address(); } catch (SocketException e) { host = "127.0.0.1"; }
+        String endpoint = host + ":" + Bridge.PORT;
+        pairing = "opencam://" + endpoint + "?token=" + bridge.token + "&pin=" + bridge.fingerprint;
+        connectionDetail.setText(getString(R.string.connection_endpoint,endpoint) + "\n" +
+            getString(host.equals("127.0.0.1")?R.string.usb_pairing_help:R.string.network_pairing_help));
+    }
+
     void enable() {
         if (!resumed || bridge != null || !available.isChecked() || checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return;
+        connectionFailure = null;
         try {
             camera();
             if (controller == null) throw new IllegalStateException("Enable camera permission first");
             Auth.Credential credential = null;
             if (protect.isChecked()) {
                 var prefs = getPreferences(MODE_PRIVATE);
-                if (password.length() > 0 || !prefs.contains("password-key")) { refreshStatus(); return; }
+                if (passwordDraft.edited || password.length() > 0 || !prefs.contains("password-key")) { refreshStatus(); return; }
                 credential = new Auth.Credential(Auth.unhex(prefs.getString("password-salt",""),16),Auth.unhex(prefs.getString("password-key",""),32));
             }
             bridge = new Bridge(this, this, credential);
             controller.attach(bridge);
-            String endpoint = address() + ":" + Bridge.PORT;
-            pairing = "opencam://" + endpoint + "?token=" + bridge.token + "&pin=" + bridge.fingerprint;
-            connectionDetail.setText(endpoint); refreshStatus();
-        } catch (Exception e) { disable(); status(getString(R.string.connection_failed,e.getMessage())); }
+            refreshPairingAddress(); refreshStatus();
+        } catch (Exception e) {
+            disable(); connectionFailure = getString(R.string.connection_failed,e.getMessage());
+            refreshStatus();
+            if (selectedTool != 4) com.google.android.material.snackbar.Snackbar.make(sheet.isShowing()?sheetRoot:findViewById(R.id.content),connectionFailure,com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show();
+        }
     }
 
     void disable() {
+        connectionFailure = null;
         if (bridge != null) { bridge.close(); bridge = null; }
         if (controller != null) controller.attach(null);
         pairing = ""; streaming = false;
@@ -244,14 +277,24 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         boolean cameraAllowed = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
         boolean paired = bridge != null && bridge.peer != null && bridge.peer.alive;
         int label = !cameraAllowed ? R.string.camera_access_needed : !previewReady ? (cameraFailure==null?R.string.starting_preview:R.string.camera_unavailable) : !available.isChecked() ? R.string.preview_only :
-            bridge == null ? (protect.isChecked() ? R.string.password_not_saved : R.string.preview_only) :
+            connectionFailure != null ? R.string.connection_needs_attention : bridge == null ? (protect.isChecked() ?
+            (passwordDraft.edited && getPreferences(MODE_PRIVATE).contains("password-key") ? R.string.password_changes_pending : R.string.password_not_saved) : R.string.preview_only) :
             paired ? (streaming ? R.string.streaming_to_desktop : R.string.desktop_connected) : R.string.ready_to_connect;
         connectionState.setText(label);
         status.setContentDescription(getString(R.string.connection_description, getString(label)));
-        int detail = bridge == null && protect.isChecked() && available.isChecked() ? R.string.discovery_paused :
+        int detail = !cameraAllowed || cameraFailure != null || (bridge == null && available.isChecked()) ? R.string.discovery_paused :
+            !previewReady ? R.string.camera_initializing :
             paired && streaming ? R.string.controls_synced : R.string.local_preview;
         cameraState.setText(detail);
         copy.setEnabled(bridge != null);
+        pairingHelp.setTextColor(com.google.android.material.color.MaterialColors.getColor(pairingHelp,
+            connectionFailure != null ? androidx.appcompat.R.attr.colorError : com.google.android.material.R.attr.colorOnSurfaceVariant));
+        retryConnection.setVisibility(connectionFailure != null && available.isChecked() && cameraAllowed ? View.VISIBLE : View.GONE);
+        discardPassword.setVisibility(protect.isChecked() && passwordDraft.edited && getPreferences(MODE_PRIVATE).contains("password-key") ? View.VISIBLE : View.GONE);
+        pairingHelp.setText(bridge != null ? getString(R.string.pairing_help) : !cameraAllowed ? getString(R.string.pairing_camera_needed) :
+            !available.isChecked() ? getString(R.string.pairing_disabled) :
+            connectionFailure != null ? connectionFailure + "\n" + getString(R.string.pairing_retry_help) :
+            protect.isChecked() ? getString(R.string.pairing_password_needed) : getString(R.string.pairing_starting));
         cameraEmpty.setVisibility(previewReady ? View.GONE : View.VISIBLE);
         emptyTitle.setText(!cameraAllowed ? R.string.permission_title : cameraFailure!=null ? R.string.camera_unavailable : R.string.starting_preview);
         emptyDetail.setText(!cameraAllowed ? R.string.permission_detail : R.string.camera_retry_detail);
@@ -372,6 +415,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         sheetTitle.setText(titles[tool]);
         panel.setVisibility(View.VISIBLE);
         connectionControlsView.setVisibility(tool == 4 ? View.VISIBLE : View.GONE);
+        if (tool == 4) refreshPairingAddress();
         cameraControlsView.setVisibility(tool < 4 ? View.VISIBLE : View.GONE);
         if (settings != null) controls.state(catalog,settings,tool);
         else if (tool < 4) controls.unavailable();

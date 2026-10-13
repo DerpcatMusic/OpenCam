@@ -628,6 +628,8 @@ fn transient(error: &anyhow::Error, authenticated: bool) -> bool {
             matches!(
                 e.kind(),
                 ConnectionRefused
+                    | NetworkUnreachable
+                    | HostUnreachable
                     | ConnectionAborted
                     | ConnectionReset
                     | NotConnected
@@ -947,6 +949,12 @@ mod recovery_tests {
         let eof = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::UnexpectedEof));
         assert!(!transient(&eof, false));
         assert!(transient(&eof, true));
+        for kind in [
+            std::io::ErrorKind::NetworkUnreachable,
+            std::io::ErrorKind::HostUnreachable,
+        ] {
+            assert!(transient(&std::io::Error::from(kind).into(), false));
+        }
     }
     #[test]
     fn overflow_resumes_compressed_video_only_at_a_keyframe() {
