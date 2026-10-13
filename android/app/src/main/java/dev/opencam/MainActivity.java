@@ -211,7 +211,8 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             extras.putBoolean("android.content.extra.IS_SENSITIVE",true);
             clip.getDescription().setExtras(extras);
             clipboard.setPrimaryClip(clip);
-            com.google.android.material.snackbar.Snackbar.make(sheet.isShowing()?sheetRoot:content,getString(R.string.pairing_link_copied),com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show();
+            if (android.os.Build.VERSION.SDK_INT < 33)
+                com.google.android.material.snackbar.Snackbar.make(sheet.isShowing()?sheetRoot:content,getString(R.string.pairing_link_copied),com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show();
         });
         if (!passwordDraft.value.isEmpty()) password.setText(passwordDraft.value);
     }
@@ -258,7 +259,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             controller.attach(bridge);
             refreshPairingAddress(); refreshStatus();
         } catch (Exception e) {
-            disable(); connectionFailure = getString(R.string.connection_failed,e.getMessage());
+            disable(); connectionFailure = e instanceof java.net.BindException ? getString(R.string.connection_busy) : getString(R.string.connection_failed,e.getMessage());
             refreshStatus();
             if (selectedTool != 4) com.google.android.material.snackbar.Snackbar.make(sheet.isShowing()?sheetRoot:findViewById(R.id.content),connectionFailure,com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show();
         }

@@ -12,6 +12,7 @@ colors:
   neutral-outline: '#626262'
   neutral-text: '#e8e8e8'
   neutral-muted: '#a8a8a8'
+  desktop-error: '#f0a0a0'
   neutral-slider-track: '#4b4d55'
   neutral-slider-thumb: '#cdced4'
   control-field-wash: rgba(255,255,255,0.055)
@@ -190,7 +191,7 @@ The desktop retains its near-black and lavender palette. Android uses semantic M
 - **Android inverse roles:** Inverse-surface, inverse-on-surface and inverse-primary provide the inherited Material transient-surface vocabulary.
 - **Camera black:** The Android preview stage uses its dedicated black resource for contained-image letterboxing in both appearances.
 
-Android error and on-error/container pairs are functional validation roles, recorded in the frontmatter rather than promoted to a decorative accent. Component frontmatter shows the light fallback assignments; `.impeccable/design.json` maps every Android resource role to its dark counterpart and theme attribute. `DynamicColors.applyToActivityIfAvailable` supplies supported Android 12+ system colors before view inflation. Do not force fallback swatches onto dynamic themes.
+Desktop `desktop-error` is the shared functional ink for status failures and connection errors. Android error and on-error/container pairs are functional validation roles, recorded in the frontmatter rather than promoted to a decorative accent. Component frontmatter shows the light fallback assignments; `.impeccable/design.json` maps every Android resource role to its dark counterpart and theme attribute. `DynamicColors.applyToActivityIfAvailable` supplies supported Android 12+ system colors before view inflation. Do not force fallback swatches onto dynamic themes.
 
 **The One-Accent Rule.** Use lavender for desktop selection and focus; let the live image hold the visual attention.
 
@@ -229,7 +230,7 @@ The `w600dp` resources put a content-measured, vertically scrollable tool column
 
 Native sheets measure to content and provide their own bounded scrolling and keyboard resize. Sheet, editor and scroll state restore after activity recreation; uncommitted password drafts stay in a ViewModel.
 
-Actual native emulator captures cover compact/wide, dark/light, tablet, large text and password keyboard/error states. The latest corrected compact evidence is `.impeccable/review/mobile-finish/phone-dark.png` and `small-phone-large-text.png`; the final native review set is under `mobile-finish`, with earlier state captures under `mobile-round2`. The corrected small-phone capture retains a visible preview at 200% text and scrolls oversized tools below it. The vivid camera images are synthetic emulator fixtures, not shipped imagery, competitor photographs or palette references. Native build, lint and tests passed on API 36 emulation; physical handset and TalkBack comfort remain unverified. Existing desktop captures likewise do not establish Windows or macOS visual verification.
+Actual native emulator captures cover compact/wide, dark/light, tablet, large text and password keyboard/error states. The earlier corrected compact evidence is `.impeccable/review/mobile-finish/phone-dark.png` and `small-phone-large-text.png`, with earlier state captures under `mobile-round2`. The current connection refinement is captured under `docs/connection-polish`: actual Linux compositor output plus API 36 phone/tablet appearances, orientations, large text, keyboard, clipboard confirmation and listener error/recovery states. The corrected small-phone capture retains a visible preview at 200% text and scrolls oversized tools below it. The vivid camera images are synthetic emulator fixtures, not shipped imagery, competitor photographs or palette references. Native build, lint and tests passed on API 36 emulation; physical handset and TalkBack comfort remain unverified. The desktop minimum size is a source constraint, not an interactively verified layout; Windows and macOS visual behavior remains unverified. Hosted native builds cover compilation, tests and packaging on those platforms.
 
 **The Open-Frame Rule.** Keep the desktop preview flexible, with two slim rails and only the selected tool floating over it.
 
@@ -264,6 +265,10 @@ Desktop buttons and input frames use gently rounded 6px corners. The action rail
 ### Floating Tool Palette
 
 The selected desktop tool is a compact surface over the preview, sized to its controls and vertically scrollable when needed. Selection menus use the same radius and blur treatment. Closing the palette returns the full preview.
+
+### Connection Feedback
+
+Desktop transport actions use direct labels and show Cancel connection during an attempt. Pairing and password fields accept Enter; discovered-phone selection reflects the active connection while the editable link remains a draft. Recovery guidance accompanies functional error ink. Android pairing guidance stays separate from camera errors, and listener failures offer a native Retry connection action. Password edits pause discovery until save or discard, including an emptied draft. Pairing copy uses a sensitive native clipboard item, system confirmation on Android 13+, and a snackbar on earlier versions.
 
 ### Native Settings Sheet
 

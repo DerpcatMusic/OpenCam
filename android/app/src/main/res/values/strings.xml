@@ -135,6 +135,7 @@
     <string name="password_changes_pending">Password changes pending</string>
     <string name="pairing_retry_help">Retry the desktop connection. Your local camera preview can stay open.</string>
     <string name="connection_needs_attention">Connection needs attention</string>
+    <string name="connection_busy">The connection port is busy. Close other webcam apps, then retry.</string>
     <string name="camera_initializing">Preparing camera</string>
     <string name="connection_endpoint">Phone address: %1$s</string>
     <string name="network_pairing_help">Use the same local network for Wi-Fi. USB uses this pairing link too.</string>

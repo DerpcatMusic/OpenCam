@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-12T22:49:02.207510Z",
+  "generatedAt": "2026-10-13T02:55:36.446208Z",
   "title": "Design System: OpenCam",
   "extensions": {
     "colorMeta": {
@@ -963,6 +963,23 @@
           "oklch(95% 0.0000 0.00)"
         ],
         "rampPurpose": "Panel exploration synthesized from this fallback swatch; not Android runtime palette tokens."
+      },
+      "desktop-error": {
+        "role": "neutral",
+        "displayName": "Soft coral error ink",
+        "canonical": "#f0a0a0",
+        "tonalRamp": [
+          "oklch(15% 0.0957 19.44)",
+          "oklch(25% 0.0957 19.44)",
+          "oklch(35% 0.0957 19.44)",
+          "oklch(45% 0.0957 19.44)",
+          "oklch(55% 0.0957 19.44)",
+          "oklch(65% 0.0957 19.44)",
+          "oklch(80% 0.0957 19.44)",
+          "oklch(95% 0.0957 19.44)"
+        ],
+        "rampPurpose": "Panel exploration synthesized from the shared desktop ERROR swatch; not runtime palette tokens.",
+        "purpose": "Shared desktop status-failure and connection-error ink; a functional role, not a second selection accent."
       }
     },
     "typographyMeta": {
@@ -1161,7 +1178,7 @@
       "depthPolicy": "Native BottomSheetDialog elevation and modal scrim; no custom app shadow or blur.",
       "compactMeasurement": "Nested camera_body fills space below measured summary. Native relative guideline at halfway through body bounds maximum tool overflow region. Bottom-anchored toolbar uses constrained wrap-content height and vertical bias 1; ordinary tools remain naturally measured, oversized tools scroll, preview stretches through remaining area. No fixed panel size or Java geometry.",
       "wideMeasurement": "w600dp preview with wrap-content scrollable tool column. No fixed tool column width.",
-      "statePolicy": "Sheet, camera editor, selection and scroll restore across activity recreation; password drafts stay in ViewModel.",
+      "statePolicy": "Sheet, camera editor, selection and scroll restore across activity recreation; password drafts stay in ViewModel. An explicit edited flag keeps even an emptied password draft pending until save or discard.",
       "panelTranslation": "Android HTML/CSS snippets are illustrative fallback translations only; CSS dimensions and simulated hover/focus do not establish new native tokens.",
       "evidence": {
         "sources": [
@@ -1176,11 +1193,12 @@
           "android/app/src/main/res/layout-w600dp/main.xml",
           "android/app/src/main/res/layout/settings_sheet.xml",
           "android/app/src/main/java/dev/opencam/MainActivity.java",
-          "android/app/src/main/java/dev/opencam/CameraControls.java"
+          "android/app/src/main/java/dev/opencam/CameraControls.java",
+          "android/app/src/main/res/values/strings.xml"
         ],
         "latestCaptures": [
-          ".impeccable/review/mobile-finish/phone-dark.png",
-          ".impeccable/review/mobile-finish/small-phone-large-text.png"
+          "docs/connection-polish/phone-dark.png",
+          "docs/connection-polish/small-phone-large-text.png"
         ],
         "otherCaptures": ".impeccable/review/mobile-round2",
         "verification": "Native build, lint and tests passed on API 36 emulation; physical handset and TalkBack comfort unverified.",
@@ -1188,8 +1206,18 @@
         "notCanonized": [
           "Theme-level Geist does not prove overrides of all inherited native TextAppearance families."
         ],
-        "finalCaptureSet": ".impeccable/review/mobile-finish",
-        "largeTextObservation": "Corrected small-phone 200% capture retains a visible contained preview; oversized labeled tools scroll below it."
+        "finalCaptureSet": "docs/connection-polish",
+        "largeTextObservation": "Corrected small-phone 200% capture retains a visible contained preview; oversized labeled tools scroll below it.",
+        "connectionStates": [
+          "docs/connection-polish/small-phone-keyboard-error.png",
+          "docs/connection-polish/phone-copy-feedback.png",
+          "docs/connection-polish/phone-retry-error.png",
+          "docs/connection-polish/phone-retry-recovered.png"
+        ]
+      },
+      "connectionFeedback": {
+        "guidance": "Pairing/listener guidance stays separate from camera errors; listener failures use colorError and a native tonal Retry connection action.",
+        "clipboard": "Pairing links are sensitive native clipboard items; Android 13+ supplies system confirmation, earlier versions receive one snackbar."
       }
     }
   },
