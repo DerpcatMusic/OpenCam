@@ -144,13 +144,31 @@ final class CameraControls {
         } });
         spacing(slider);
     }
+    /** Dropdown that matches anywhere in an entry, so "1080" finds 1920x1080. */
+    static final class ContainsAdapter extends ArrayAdapter<String> {
+        final List<String> all;
+        ContainsAdapter(Context context, List<String> all) { super(context, android.R.layout.simple_dropdown_item_1line, new ArrayList<>(all)); this.all = all; }
+        @Override public android.widget.Filter getFilter() {
+            return new android.widget.Filter() {
+                @Override protected FilterResults performFiltering(CharSequence query) {
+                    String needle = query == null ? "" : query.toString().toLowerCase(Locale.ROOT).replace('×', 'x').replace(" ", "");
+                    List<String> hits = new ArrayList<>();
+                    for (String item : all) if (item.toLowerCase(Locale.ROOT).contains(needle)) hits.add(item);
+                    FilterResults results = new FilterResults(); results.values = hits; results.count = hits.size(); return results;
+                }
+                @SuppressWarnings("unchecked") @Override protected void publishResults(CharSequence query, FilterResults results) {
+                    clear(); addAll((List<String>) results.values); notifyDataSetChanged();
+                }
+            };
+        }
+    }
     interface Edit { void apply(String text) throws Exception; }
     void editor(String label, List<String> choices, Function<JSONObject, String> value, Edit edit, int type) {
         LinearLayout row = new LinearLayout(context); row.setGravity(android.view.Gravity.CENTER_VERTICAL);
         TextInputLayout field = new TextInputLayout(context, null, com.google.android.material.R.attr.textInputOutlinedExposedDropdownMenuStyle);
         field.setHint(label); field.setEndIconMode(choices.isEmpty() ? TextInputLayout.END_ICON_NONE : TextInputLayout.END_ICON_DROPDOWN_MENU);
         MaterialAutoCompleteTextView input = new MaterialAutoCompleteTextView(field.getContext()); input.setSingleLine(true); input.setInputType(type); input.setImeOptions(EditorInfo.IME_ACTION_DONE);
-        input.setAdapter(new ArrayAdapter<>(context, android.R.layout.simple_dropdown_item_1line, choices)); input.setThreshold(0);
+        input.setAdapter(new ContainsAdapter(context, choices)); input.setThreshold(0);
         field.addView(input); row.addView(field, new LinearLayout.LayoutParams(0, -2, 1));
         Runnable submit = () -> { try { edit.apply(input.getText().toString()); field.setError(null); input.clearFocus(); } catch (Exception e) { field.setError(e.getMessage()); } };
         input.setOnItemClickListener((parent, view, position, id) -> submit.run());
@@ -206,7 +224,7 @@ final class CameraControls {
             JSONArray size = new JSONArray(new int[]{Integer.parseInt(parts[0]), Integer.parseInt(parts[1])});
             if (!resolutions.contains(size.getInt(0) + "x" + size.getInt(1))) throw new IllegalArgumentException(text(R.string.unsupported_resolution));
             List<Integer> rates = CaptureSettings.fps(camera, size);
-            int fps = rates.contains(settings.optInt("fps")) ? settings.optInt("fps") : rates.stream().min(Comparator.comparingInt(f -> Math.abs(f - 30))).orElseThrow(() -> new IllegalArgumentException(text(R.string.regular_sensor_mode)));
+            int fps = rates.contains(settings.optInt("fps")) ? settings.optInt("fps") : rates.stream().min(Comparator.comparingInt(f -> Math.abs(f - settings.optInt("fps", 30)))).orElseThrow(() -> new IllegalArgumentException(text(R.string.regular_sensor_mode)));
             patch(Json.object("width", size.getInt(0), "height", size.getInt(1), "fps", fps), true);
         }, InputType.TYPE_CLASS_TEXT);
         List<String> rates = new ArrayList<>(); JSONArray size = new JSONArray(new int[]{settings.optInt("width"), settings.optInt("height")});

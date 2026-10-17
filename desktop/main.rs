@@ -495,20 +495,8 @@ impl Studio {
     fn controls(&self) -> Value {
         let mut controls = self.settings.clone();
         if let Some(map) = controls.as_object_mut() {
-            for key in [
-                "camera",
-                "codec",
-                "width",
-                "height",
-                "fps",
-                "bitrate",
-                "outputWidth",
-                "outputHeight",
-                "phoneRotation",
-                "phoneMirror",
-                "outputMode",
-            ] {
-                map.remove(key);
+            for key in processing::STREAM_KEYS {
+                map.remove(*key);
             }
         }
         controls

@@ -379,7 +379,10 @@ impl Studio {
             let camera = self.camera();
             let normal = protocol::normal_fps(&camera, &value);
             if !normal.contains(&self.settings["fps"].as_u64().unwrap_or(30)) {
-                if let Some(fps) = normal.into_iter().min_by_key(|f| f.abs_diff(30)) {
+                if let Some(fps) = normal
+                    .into_iter()
+                    .min_by_key(|f| f.abs_diff(self.settings["fps"].as_u64().unwrap_or(30)))
+                {
                     self.settings["fps"] = json!(fps);
                 }
             }

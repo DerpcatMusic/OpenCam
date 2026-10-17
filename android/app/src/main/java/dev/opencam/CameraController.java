@@ -350,15 +350,24 @@ final class CameraController implements AutoCloseable {
         } catch (Exception e) { stop(); throw e; }
     }
 
+    static boolean same(Object a, Object b) {
+        if (a instanceof Number x && b instanceof Number y) return x.doubleValue() == y.doubleValue();
+        return Objects.equals(a, b);
+    }
+
     void controls(JSONObject settings) throws Exception {
         if (current == null) throw new IllegalStateException("Start a stream before adjusting controls");
         JSONObject merged = new JSONObject(current.toString());
         Set<String> streamKeys = Set.of("camera", "codec", "width", "height", "fps", "bitrate", "outputWidth", "outputHeight", "phoneRotation", "phoneMirror", "outputMode");
+        boolean restart = false;
         for (Iterator<String> keys = settings.keys(); keys.hasNext();) {
             String key = keys.next();
-            if (streamKeys.contains(key)) throw new IllegalArgumentException("Stream changes require configure");
-            merged.put(key, settings.get(key));
+            Object value = settings.get(key);
+            // An unchanged stream value is harmless; a changed one restarts the stream instead of failing the update.
+            if (streamKeys.contains(key) && !same(current.opt(key), value)) restart = true;
+            merged.put(key, value);
         }
+        if (restart) { configure(merged); return; }
         validate(merged, lens, streaming);
         if (session == null || (PhoneProcessor.needed(merged) || streaming && merged.optString("codec").equals(WirePixels.RGBA)) != (processor != null) || !merged.optString("mlDelegate","auto").equals(current.optString("mlDelegate","auto"))) {
             configure(merged); return;
