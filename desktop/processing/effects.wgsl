@@ -1,4 +1,4 @@
-struct Params { dimensions:vec4<u32>, effects:vec4<f32>, local:vec4<f32>, aspect:vec4<f32>, flags:vec4<u32> }
+struct Params { dimensions:vec4<u32>, effects:vec4<f32>, local:vec4<f32>, aspect:vec4<f32>, flags:vec4<u32>, look:vec4<f32> }
 @group(0) @binding(0) var<storage,read> source:array<u32>;
 @group(0) @binding(1) var<storage,read_write> blurA:array<u32>;
 @group(0) @binding(2) var<storage,read_write> blurB:array<u32>;
@@ -17,9 +17,15 @@ fn sample_pixel(uv:vec2<f32>,kind:u32) -> vec4<f32> {
     return mix(mix(read_pixel(q,kind),read_pixel(vec2<u32>(next.x,q.y),kind),t.x),mix(read_pixel(vec2<u32>(q.x,next.y),kind),read_pixel(next,kind),t.x),t.y);
 }
 fn mask_value(uv:vec2<f32>) -> f32 {
-    if p.flags.z==0u {return 0.;}
+    if p.flags.z==0u {return 1.;}
     let f=clamp(uv*vec2<f32>(256.,144.)-0.5,vec2<f32>(0.),vec2<f32>(255.,143.));let q=vec2<u32>(floor(f));let n=min(q+vec2<u32>(1u),vec2<u32>(255u,143u));let t=fract(f);
     return smoothstep(0.25,0.75,mix(mix(mask[q.y*256u+q.x],mask[q.y*256u+n.x],t.x),mix(mask[n.y*256u+q.x],mask[n.y*256u+n.x],t.x),t.y));
+}
+fn grade(c:vec3<f32>) -> vec3<f32> {
+    let y=dot(c,vec3<f32>(0.299,0.587,0.114));let i=dot(c,vec3<f32>(0.596,-0.274,-0.322));let q=dot(c,vec3<f32>(0.211,-0.523,0.312));
+    let cs=cos(p.look.x);let sn=sin(p.look.x);let ri=p.look.y*(i*cs-q*sn);let rq=p.look.y*(i*sn+q*cs);
+    let rgb=vec3<f32>(y+0.956*ri+0.621*rq,y-0.272*ri-0.647*rq,y-1.106*ri+1.703*rq);
+    return clamp((rgb-0.5)*p.look.z+0.5,vec3<f32>(0.),vec3<f32>(1.));
 }
 fn blur(pos:vec2<u32>,axis:vec2<f32>,kind:u32) -> vec4<f32> {
     let weights=array<f32,7>(0.064759,0.120985,0.176033,0.199471,0.176033,0.120985,0.064759);var color=vec4<f32>(0.);
@@ -38,6 +44,7 @@ fn blur(pos:vec2<u32>,axis:vec2<f32>,kind:u32) -> vec4<f32> {
     if p.flags.y==1u {uv.x=1.-uv.x;}
     if p.flags.x==90u {uv=vec2<f32>(uv.y,1.-uv.x);}else if p.flags.x==180u {uv=1.-uv;}else if p.flags.x==270u {uv=vec2<f32>(1.-uv.y,uv.x);}
     var color=sample_pixel(uv,0u);
+    if p.look.w>0. {let t=1./vec2<f32>(p.dimensions.xy);let around=(sample_pixel(uv+vec2<f32>(t.x,0.),0u)+sample_pixel(uv-vec2<f32>(t.x,0.),0u)+sample_pixel(uv+vec2<f32>(0.,t.y),0u)+sample_pixel(uv-vec2<f32>(0.,t.y),0u))*0.25;color=color+p.look.w*(color-around);}
     if p.local.w>0. {color=mix(sample_pixel(uv,2u),color,mask_value(uv));}
-    output[i]=pack4x8unorm(vec4<f32>(color.xyz,1.));
+    output[i]=pack4x8unorm(vec4<f32>(grade(clamp(color.xyz,vec3<f32>(0.),vec3<f32>(1.))),1.));
 }

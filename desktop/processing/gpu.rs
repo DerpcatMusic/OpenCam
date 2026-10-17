@@ -21,6 +21,7 @@ struct Params {
     local: [f32; 4],
     aspect: [f32; 4],
     flags: [u32; 4],
+    look: [f32; 4],
 }
 struct Buffers {
     key: (u32, u32, u32, u32),
@@ -114,6 +115,7 @@ impl Gpu {
                 local: [0.; 4],
                 aspect: [0.; 4],
                 flags: [0; 4],
+                look: [0.; 4],
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -211,6 +213,7 @@ impl Gpu {
                     u32::from(mask.is_some()),
                     0,
                 ],
+                look: [o.hue.to_radians(), o.saturation, o.contrast, o.sharpen],
             }),
         );
         let mut encoder = self.device.create_command_encoder(&Default::default());

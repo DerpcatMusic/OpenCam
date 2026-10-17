@@ -58,11 +58,17 @@ def main():
     replace_link(app / 'current', destination.relative_to(app))
     for name in ['opencam', 'opencam-probe']:
         replace_link(home / '.local/bin' / name, app / 'current' / name)
+    icon = 'camera-web'
+    if (package / 'opencam.svg').is_file():
+        icons = home / '.local/share/icons/hicolor/scalable/apps'
+        icons.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(package / 'opencam.svg', icons / 'dev.opencam.OpenCam.svg')
+        icon = 'dev.opencam.OpenCam'
     launch = str(home / '.local/bin/opencam').replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
     entry = '\n'.join([
         '[Desktop Entry]', 'Type=Application', 'Name=OpenCam',
         'Comment=Use your Android phone as a USB or Wi-Fi webcam',
-        f'Exec="{launch}"', 'Icon=camera-web', 'Terminal=false',
+        f'Exec="{launch}"', f'Icon={icon}', 'Terminal=false',
         'Categories=AudioVideo;Video;', 'StartupWMClass=dev.opencam.OpenCam', '',
     ])
     applications = home / '.local/share/applications'

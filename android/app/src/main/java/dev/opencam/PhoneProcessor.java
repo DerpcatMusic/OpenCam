@@ -14,27 +14,32 @@ import org.json.JSONObject;
 final class PhoneProcessor implements AutoCloseable {
     record Options(float stretchX, float stretchY, float distortion, float bulge, float radius,
                    float centerX, float centerY, float blur, int maskFps, String delegate,
-                   int rotation, boolean mirror, int fit) {
+                   int rotation, boolean mirror, int fit,
+                   float hue, float saturation, float contrast, float sharpen) {
         static Options read(JSONObject s) {
             float sx = value(s,"stretchX",1,.25,4), sy = value(s,"stretchY",1,.25,4);
             float distortion = value(s,"distortion",0,-.8,.8), bulge = value(s,"bulge",0,-.8,.8);
             float radius = value(s,"bulgeRadius",.4,.05,1), x = value(s,"bulgeX",.5,0,1), y = value(s,"bulgeY",.5,0,1);
-            float blur = value(s,"backgroundBlur",0,0,32);
+            float blur = value(s,"backgroundBlur",0,0,64);
             int fps = (int) Limits.checked("Mask rate",s.optInt("maskFps",10),2,30);
-            int rotation = s.optInt("phoneRotation",0), fit = s.optInt("outputMode",0);
-            if (rotation != 0 && rotation != 90 && rotation != 180 && rotation != 270) throw new IllegalArgumentException("Rotation must be 0, 90, 180 or 270");
+            int rotation = PhoneProcessor.rotation(s), fit = s.optInt("outputMode",0);
+            if (rotation % 90 != 0) throw new IllegalArgumentException("Rotation must be 0, 90, 180 or 270");
             if (fit < 0 || fit > 2) throw new IllegalArgumentException("Use Fit, Crop or Stretch");
             String delegate = s.optString("mlDelegate","auto");
             if (!delegate.equals("auto") && !delegate.equals("cpu") && !delegate.equals("gpu")) throw new IllegalArgumentException("Unknown ML delegate");
-            return new Options(sx,sy,distortion,bulge,radius,x,y,blur,fps,delegate,rotation,s.optBoolean("phoneMirror"),fit);
+            return new Options(sx,sy,distortion,bulge,radius,x,y,blur,fps,delegate,rotation,s.optBoolean("phoneMirror"),fit,
+                value(s,"hue",0,-180,180),value(s,"saturation",1,0,2),value(s,"contrast",1,.5,1.5),value(s,"sharpen",0,0,2));
         }
         static float value(JSONObject s,String key,double fallback,double low,double high) {
             return (float) Limits.checked(key,s.optDouble(key,fallback),low,high);
         }
-        boolean effects() { return stretchX != 1 || stretchY != 1 || distortion != 0 || bulge != 0 || blur > 0 || rotation != 0 || mirror; }
+        boolean effects() { return stretchX != 1 || stretchY != 1 || distortion != 0 || bulge != 0 || blur > 0 || rotation != 0 || mirror
+                || hue != 0 || saturation != 1 || contrast != 1 || sharpen > 0; }
     }
-    static int outputWidth(JSONObject s) { return dimension(s,"outputWidth",s.optInt(s.optInt("phoneRotation")%180 == 0 ? "width" : "height")); }
-    static int outputHeight(JSONObject s) { return dimension(s,"outputHeight",s.optInt(s.optInt("phoneRotation")%180 == 0 ? "height" : "width")); }
+    /** User rotation plus the orientation-following rotation the controller derives from the display. */
+    static int rotation(JSONObject s) { return ((s.optInt("phoneRotation",0) + s.optInt("autoRotation",0)) % 360 + 360) % 360; }
+    static int outputWidth(JSONObject s) { return dimension(s,"outputWidth",s.optInt(rotation(s)%180 == 0 ? "width" : "height")); }
+    static int outputHeight(JSONObject s) { return dimension(s,"outputHeight",s.optInt(rotation(s)%180 == 0 ? "height" : "width")); }
     static int dimension(JSONObject s,String key,int fallback) {
         int v = s.optInt(key,0); if (v == 0) v = fallback;
         Limits.checked(key,v,2,8192);
@@ -54,7 +59,8 @@ final class PhoneProcessor implements AutoCloseable {
     final AtomicBoolean pending = new AtomicBoolean();
     final FloatBuffer quad = ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer();
     final float[] textureMatrix = new float[16];
-    final int[] buffers = new int[3], images = new int[3];
+    final int[] buffers = new int[4], images = new int[4];
+    int blurred;
     final java.util.Map<String,Integer> uniforms = new java.util.HashMap<>();
     volatile Options options;
     volatile boolean closed;
@@ -67,15 +73,19 @@ final class PhoneProcessor implements AutoCloseable {
     EGLConfig configuration;
     SurfaceTexture cameraTexture;
     Surface cameraSurface;
-    int cameraImage,maskImage,program,blurProgram;
+    int cameraImage,maskImage,program,blurProgram,maskProgram,accumIndex;
+    final int[] accum = new int[2], accumBuffers = new int[2];
     volatile BackgroundSegmenter segmenter;
     BackgroundSegmenter.Mask uploaded;
     long sampledMs;
+    int sensorOrientation;
+    int maskWidth = BackgroundSegmenter.WIDTH, maskHeight = BackgroundSegmenter.HEIGHT;
+    static final int BLUR_WIDTH = 640, BLUR_HEIGHT = 360;
 
     PhoneProcessor(Context context,Surface encoderSurface,int inputWidth,int inputHeight,int width,int height,
                    JSONObject settings,Consumer<Exception> error) throws Exception {
         this.context=context; this.inputWidth=inputWidth; this.inputHeight=inputHeight;
-        this.width=width; this.height=height; this.error=error; options=Options.read(settings);
+        this.width=width; this.height=height; this.error=error; options=Options.read(settings); sensorOrientation=settings.optInt("sensorOrientation");
         quad.put(new float[]{-1,-1,1,-1,-1,1,1,1}).position(0);
         thread.start(); handler=new Handler(thread.getLooper());
         FutureTask<Void> init = new FutureTask<>(() -> { initialize(encoderSurface); return null; });
@@ -110,7 +120,9 @@ final class PhoneProcessor implements AutoCloseable {
         int[] maximum=new int[1]; GLES30.glGetIntegerv(GLES30.GL_MAX_TEXTURE_SIZE,maximum,0);
         if (width>maximum[0] || height>maximum[0]) throw new IllegalArgumentException("Output exceeds this phone GPU's texture limit");
         program=program("camera.frag"); blurProgram=program("blur.frag");
-        for (String name : new String[]{"cameraTexture","blurredTexture","personMask","textureMatrix","aspectScale","stretch","center","distortion","bulge","radius","blurEnabled","maskReady","rotation","mirror","analysis"}) uniforms.put(name,GLES30.glGetUniformLocation(program,name));
+        for (String name : new String[]{"cameraTexture","blurredTexture","personMask","textureMatrix","aspectScale","stretch","center","distortion","bulge","radius","blurEnabled","maskReady","rotation","mirror","analysis","look","texel","maskTexel","guide"}) uniforms.put(name,GLES30.glGetUniformLocation(program,name));
+        maskProgram=program("mask.frag");
+        for (String name : new String[]{"previous","latest","blend"}) uniforms.put(name,GLES30.glGetUniformLocation(maskProgram,name));
         for (String name : new String[]{"image","stepSize"}) uniforms.put(name,GLES30.glGetUniformLocation(blurProgram,name));
         cameraImage=texture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES);
         maskImage=texture(GLES30.GL_TEXTURE_2D);
@@ -164,7 +176,8 @@ final class PhoneProcessor implements AutoCloseable {
     }
     void camera(Options o,boolean analysis,boolean maskReady) {
         GLES30.glUseProgram(program); bind(0,GLES11Ext.GL_TEXTURE_EXTERNAL_OES,cameraImage,program,"cameraTexture");
-        bind(1,GLES30.GL_TEXTURE_2D,images[2]==0 ? maskImage : images[2],program,"blurredTexture"); bind(2,GLES30.GL_TEXTURE_2D,maskImage,program,"personMask");
+        bind(1,GLES30.GL_TEXTURE_2D,blurred==0 ? maskImage : blurred,program,"blurredTexture"); bind(2,GLES30.GL_TEXTURE_2D,accum[0]==0 ? maskImage : accum[accumIndex],program,"personMask");
+        bind(3,GLES30.GL_TEXTURE_2D,buffers[1]==0 ? maskImage : images[1],program,"guide");
         GLES30.glUniformMatrix4fv(uniforms.get("textureMatrix"),1,false,textureMatrix,0);
         float source=(float)inputWidth/inputHeight; if (o.rotation()%180!=0) source=1/source;
         float target=(float)width/height, x=1,y=1;
@@ -179,15 +192,22 @@ final class PhoneProcessor implements AutoCloseable {
         GLES30.glUniform1f(uniforms.get("blurEnabled"),o.blur()>0 ? 1:0);
         GLES30.glUniform1f(uniforms.get("maskReady"),maskReady ? 1:0);
         GLES30.glUniform1i(uniforms.get("analysis"),analysis ? 1:0);
-        GLES30.glUniform1i(uniforms.get("rotation"),o.rotation());
+        // The camera's transform matrix already turns raw sensor frames upright by the sensor orientation when it swaps axes.
+        int matrixRotation = Math.abs(textureMatrix[1]) > Math.abs(textureMatrix[0]) ? sensorOrientation : 0;
+        GLES30.glUniform1i(uniforms.get("rotation"),((o.rotation()-matrixRotation)%360+360)%360);
         GLES30.glUniform1i(uniforms.get("mirror"),o.mirror() ? 1:0);
+        GLES30.glUniform4f(uniforms.get("look"),(float)Math.toRadians(o.hue()),o.saturation(),o.contrast(),o.sharpen());
+        GLES30.glUniform2f(uniforms.get("texel"),1f/inputWidth,1f/inputHeight);
+        GLES30.glUniform2f(uniforms.get("maskTexel"),1f/maskWidth,1f/maskHeight);
         draw(program);
     }
+    // images[0]: small frame for the segmenter. images[1..3]: full blur chain at BLUR size, so the background blur stays smooth.
     void createBlurBuffers() {
-        GLES30.glGenFramebuffers(3,buffers,0);
-        for (int i=0;i<3;i++) {
+        GLES30.glGenFramebuffers(4,buffers,0);
+        for (int i=0;i<4;i++) {
             images[i]=texture(GLES30.GL_TEXTURE_2D);
-            GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_RGBA8,BackgroundSegmenter.WIDTH,BackgroundSegmenter.HEIGHT,0,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,null);
+            int w=i==0 ? BackgroundSegmenter.WIDTH : BLUR_WIDTH, h=i==0 ? BackgroundSegmenter.HEIGHT : BLUR_HEIGHT;
+            GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_RGBA8,w,h,0,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,null);
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,buffers[i]);
             GLES30.glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER,GLES30.GL_COLOR_ATTACHMENT0,GLES30.GL_TEXTURE_2D,images[i],0);
             check(GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER)==GLES30.GL_FRAMEBUFFER_COMPLETE,"Create blur framebuffer");
@@ -196,27 +216,55 @@ final class PhoneProcessor implements AutoCloseable {
     void blur(Options o,long now) {
         if (buffers[0]==0) createBlurBuffers();
         if (segmenter==null) segmenter=new BackgroundSegmenter(context,o.delegate(),error);
-        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,buffers[0]);
-        GLES30.glViewport(0,0,BackgroundSegmenter.WIDTH,BackgroundSegmenter.HEIGHT); camera(o,true,false);
         if (segmenter.idle() && now-sampledMs >= 1000/o.maskFps()) {
             sampledMs=now;
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,buffers[0]);
+            GLES30.glViewport(0,0,BackgroundSegmenter.WIDTH,BackgroundSegmenter.HEIGHT); camera(o,true,false);
             ByteBuffer rgba=ByteBuffer.allocateDirect(BackgroundSegmenter.WIDTH*BackgroundSegmenter.HEIGHT*4);
             GLES30.glReadPixels(0,0,BackgroundSegmenter.WIDTH,BackgroundSegmenter.HEIGHT,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,rgba);
             rgba.position(0); segmenter.submit(rgba,now);
         }
-        for (int pass=0;pass<2;pass++) {
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,buffers[pass+1]); GLES30.glUseProgram(blurProgram);
-            bind(0,GLES30.GL_TEXTURE_2D,images[pass],blurProgram,"image");
-            GLES30.glUniform2f(uniforms.get("stepSize"),pass==0 ? o.blur()/BackgroundSegmenter.WIDTH:0,pass==1 ? o.blur()/BackgroundSegmenter.HEIGHT:0);
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,buffers[1]);
+        GLES30.glViewport(0,0,BLUR_WIDTH,BLUR_HEIGHT); camera(o,true,false);
+        // Several gentle passes approximate one wide Gaussian without the ghosting of widely spaced taps.
+        int rounds=Math.min(8,Math.max(1,(int)Math.ceil(o.blur()/8f))); float step=o.blur()/rounds/BackgroundSegmenter.WIDTH;
+        int source=1, target=2;
+        for (int round=0;round<rounds;round++) for (int pass=0;pass<2;pass++) {
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,buffers[target]); GLES30.glUseProgram(blurProgram);
+            bind(0,GLES30.GL_TEXTURE_2D,images[source],blurProgram,"image");
+            GLES30.glUniform2f(uniforms.get("stepSize"),pass==0 ? step:0,pass==1 ? step*BLUR_WIDTH/BLUR_HEIGHT:0);
             draw(blurProgram);
+            source=target; target=target==2 ? 3 : 2;
         }
+        blurred=images[source];
         BackgroundSegmenter.Mask mask=segmenter.mask;
         if (mask!=null && mask!=uploaded) {
             GLES30.glActiveTexture(GLES30.GL_TEXTURE2); GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,maskImage);
             GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT,1); mask.pixels().position(0);
             GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_R8,mask.width(),mask.height(),0,GLES30.GL_RED,GLES30.GL_UNSIGNED_BYTE,mask.pixels());
-            uploaded=mask;
+            uploaded=mask; maskWidth=mask.width(); maskHeight=mask.height();
         }
+        if (uploaded!=null) accumulate(false);
+    }
+    /** Eases the matte toward each new segmentation result so brief model hiccups never flash the background sharp. */
+    void accumulate(boolean fresh) {
+        if (accum[0]==0) {
+            GLES30.glGenFramebuffers(2,accumBuffers,0);
+            for (int i=0;i<2;i++) {
+                accum[i]=texture(GLES30.GL_TEXTURE_2D);
+                GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_R8,maskWidth,maskHeight,0,GLES30.GL_RED,GLES30.GL_UNSIGNED_BYTE,null);
+                GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,accumBuffers[i]);
+                GLES30.glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER,GLES30.GL_COLOR_ATTACHMENT0,GLES30.GL_TEXTURE_2D,accum[i],0);
+                check(GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER)==GLES30.GL_FRAMEBUFFER_COMPLETE,"Create matte framebuffer");
+            }
+            fresh=true;
+        }
+        int next=1-accumIndex;
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,accumBuffers[next]); GLES30.glViewport(0,0,maskWidth,maskHeight);
+        GLES30.glUseProgram(maskProgram);
+        bind(0,GLES30.GL_TEXTURE_2D,accum[accumIndex],maskProgram,"previous"); bind(1,GLES30.GL_TEXTURE_2D,maskImage,maskProgram,"latest");
+        GLES30.glUniform1f(uniforms.get("blend"),fresh ? 1f : .35f);
+        draw(maskProgram); accumIndex=next;
     }
     void render() {
         long start=System.nanoTime(), now=SystemClock.uptimeMillis(); Options o=options;
@@ -224,13 +272,13 @@ final class PhoneProcessor implements AutoCloseable {
         if (o.blur()>0) blur(o,now);
         else if (segmenter!=null) { segmenter.close(); segmenter=null; uploaded=null; }
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0); GLES30.glViewport(0,0,width,height);
-        camera(o,false,uploaded!=null && now-uploaded.sampledMs()<=500);
+        camera(o,false,uploaded!=null && now-uploaded.sampledMs()<=3000);
         EGLExt.eglPresentationTimeANDROID(display,eglSurface,cameraTexture.getTimestamp());
         check(EGL14.eglSwapBuffers(display,eglSurface),"Submit processed frame");
         if (previewSurface != EGL14.EGL_NO_SURFACE) {
             check(EGL14.eglMakeCurrent(display, previewSurface, previewSurface, eglContext), "Bind preview");
             GLES30.glViewport(0, 0, width, height);
-            camera(o, false, uploaded != null && now-uploaded.sampledMs()<=500);
+            camera(o, false, uploaded != null && now-uploaded.sampledMs()<=3000);
             check(EGL14.eglSwapBuffers(display, previewSurface), "Submit preview frame");
             check(EGL14.eglMakeCurrent(display, eglSurface, eglSurface, eglContext), "Restore encoder surface");
         }
@@ -249,8 +297,9 @@ final class PhoneProcessor implements AutoCloseable {
             if (cameraSurface!=null) cameraSurface.release();
             if (cameraTexture!=null) cameraTexture.release();
             if (eglContext!=EGL14.EGL_NO_CONTEXT) {
-                GLES30.glDeleteTextures(3,images,0); GLES30.glDeleteTextures(2,new int[]{cameraImage,maskImage},0);
-                GLES30.glDeleteFramebuffers(3,buffers,0); GLES30.glDeleteProgram(program); GLES30.glDeleteProgram(blurProgram);
+                GLES30.glDeleteTextures(4,images,0); GLES30.glDeleteTextures(2,new int[]{cameraImage,maskImage},0);
+                GLES30.glDeleteFramebuffers(4,buffers,0); GLES30.glDeleteProgram(program); GLES30.glDeleteProgram(blurProgram); GLES30.glDeleteProgram(maskProgram);
+                if (accum[0]!=0) { GLES30.glDeleteTextures(2,accum,0); GLES30.glDeleteFramebuffers(2,accumBuffers,0); }
             }
             if (display!=EGL14.EGL_NO_DISPLAY) {
                 EGL14.eglMakeCurrent(display,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_CONTEXT);

@@ -65,6 +65,15 @@
     <string name="stabilization_group">Stabilization</string>
     <string name="sensor_processing_group">Camera processing</string>
     <string name="geometry_group">Geometry</string>
+    <string name="quick">Quick</string>
+    <string name="quick_help">The controls you reach for most, in one place.</string>
+    <string name="quick_group">Essentials</string>
+    <string name="look_group">Color and detail</string>
+    <string name="hue">Hue</string>
+    <string name="saturation">Saturation</string>
+    <string name="contrast">Contrast</string>
+    <string name="sharpen">Sharpen</string>
+    <string name="follow_orientation">Follow phone orientation</string>
     <string name="background_group">Background</string>
     <string name="advanced_geometry">advanced geometry</string>
     <string name="advanced_output">output size and rotation</string>

@@ -53,7 +53,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
     final android.hardware.display.DisplayManager.DisplayListener displays = new android.hardware.display.DisplayManager.DisplayListener() {
         public void onDisplayAdded(int id) { }
         public void onDisplayRemoved(int id) { }
-        public void onDisplayChanged(int id) { if (preview.getDisplay() != null && preview.getDisplay().getDisplayId() == id) transform(); }
+        public void onDisplayChanged(int id) { if (preview.getDisplay() != null && preview.getDisplay().getDisplayId() == id) { transform(); if (controller != null) controller.displayChanged(); } }
     };
     final java.util.List<com.google.android.material.button.MaterialButton> tools = new ArrayList<>();
 
@@ -95,7 +95,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         sheet.getBehavior().setSkipCollapsed(true);
         sheet.setOnDismissListener(dialog -> {
             selectedTool = -1; panel.setVisibility(View.GONE);
-            for (var button : tools) button.setChecked(false);
+            for (var button : tools) if (button != null) button.setChecked(false);
             refreshStatus();
         });
         panel = sheetRoot.findViewById(R.id.panel);
@@ -105,9 +105,10 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         controls = new CameraControls(sheetRoot.getContext(), (LinearLayout)cameraControlsView, this::apply, this::status, () -> {
             CameraController active=controller; if(active!=null) active.local(Json.object("type","raw"));
         });
-        int[] ids = {R.id.tool_camera, R.id.tool_video, R.id.tool_sensor, R.id.tool_effects};
+        int[] ids = {R.id.tool_camera, R.id.tool_video, R.id.tool_sensor, R.id.tool_effects, 0, R.id.tool_quick};
         for (int i = 0; i < ids.length; i++) {
             final int index = i;
+            if (ids[i] == 0) { tools.add(null); continue; } // slot 4 is the Connection sheet, opened from the status button
             com.google.android.material.button.MaterialButton button = findViewById(ids[i]);
             button.setCheckable(true); tools.add(button);
             button.setOnClickListener(v -> select(selectedTool == index ? -1 : index));
@@ -445,16 +446,16 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
     void select(int tool) {
         if (tool < 0) { sheet.dismiss(); selectedTool = -1; panel.setVisibility(View.GONE); refreshStatus(); return; }
         selectedTool = tool;
-        for (int i = 0; i < tools.size(); i++) tools.get(i).setChecked(i == tool);
-        int[] titles = {R.string.camera,R.string.video,R.string.exposure,R.string.effects,R.string.connection};
+        for (int i = 0; i < tools.size(); i++) if (tools.get(i) != null) tools.get(i).setChecked(i == tool);
+        int[] titles = {R.string.camera,R.string.video,R.string.exposure,R.string.effects,R.string.connection,R.string.quick};
         sheetTitle.setText(titles[tool]);
         panel.setVisibility(View.VISIBLE);
         connectionControlsView.setVisibility(tool == 4 ? View.VISIBLE : View.GONE);
         if (tool == 4) refreshPairingAddress();
-        cameraControlsView.setVisibility(tool < 4 ? View.VISIBLE : View.GONE);
+        cameraControlsView.setVisibility(tool != 4 ? View.VISIBLE : View.GONE);
         if (settings != null) controls.state(catalog,settings,tool);
-        else if (tool < 4) controls.unavailable();
-        if (tool < 4 && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) requestCamera();
+        else if (tool != 4) controls.unavailable();
+        if (tool != 4 && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) requestCamera();
         refreshStatus(); panel.scrollTo(0,0);
         if (!sheet.isShowing()) {
             sheet.show();
@@ -471,7 +472,12 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
     void transform() {
         if (previewInfo == null || previewInfo.optInt("width") <= 0 || previewInfo.optInt("height") <= 0 || preview.getDisplay() == null || preview.getWidth() == 0 || preview.getHeight() == 0) return;
         preview.setTransform(previewMatrix(preview.getWidth(), preview.getHeight(), previewInfo.optInt("width"), previewInfo.optInt("height"),
-            previewInfo.optInt("orientation"), preview.getDisplay().getRotation() * 90, previewInfo.optBoolean("processed")));
+            previewInfo.optInt("orientation"), previewDisplay(preview.getDisplay().getRotation() * 90), previewInfo.optBoolean("processed")));
+    }
+    /** Processed buffers are the raw frame rotated by the stream rotation; only the part that differs from upright needs undoing. */
+    int previewDisplay(int display) {
+        if (settings == null || !previewInfo.optBoolean("processed")) return display;
+        return ((PhoneProcessor.rotation(settings) - settings.optInt("sensorOrientation") + display) % 360 + 360) % 360;
     }
     static android.graphics.Matrix previewMatrix(float vw, float vh, float w, float h, int sensor, int display, boolean processed) {
         // Camera2 already rotates direct TextureView buffers for the sensor; EGL output has explicit dimensions.

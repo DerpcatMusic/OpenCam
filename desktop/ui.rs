@@ -1546,7 +1546,30 @@ impl Studio {
                 )
             })
             .when(tool == 8, |d| {
-                d.child(self.slider(
+                d.children(
+                    [
+                        ("hue", "Hue", -180., 180.),
+                        ("saturation", "Saturation", 0., 2.),
+                        ("contrast", "Contrast", 0.5, 1.5),
+                        ("sharpen", "Sharpen", 0., 2.),
+                    ]
+                    .into_iter()
+                    .map(|(key, label, min, max)| {
+                        self.slider(
+                            Slider {
+                                key,
+                                label,
+                                min,
+                                max,
+                                log: false,
+                            },
+                            ready,
+                            cx,
+                        )
+                        .into_any_element()
+                    }),
+                )
+                .child(self.slider(
                     Slider {
                         key: "backgroundBlur",
                         label: "Background blur",

@@ -204,16 +204,22 @@ pub fn default_settings(catalog: &Value, camera: &Value) -> Result<Value> {
         codec["bitrate"][0].as_i64().unwrap_or(1),
         codec["bitrate"][1].as_i64().unwrap_or(8_000_000),
     );
-    Ok(
-        serde_json::json!({"camera":camera["id"], "codec":codec["name"], "width":size[0], "height":size[1], "fps":fps,
+    // Split in two: one json! literal this large exceeds the macro recursion limit.
+    let mut settings = serde_json::json!({"camera":camera["id"], "codec":codec["name"], "width":size[0], "height":size[1], "fps":fps,
         "bitrate":bitrate, "manual":false, "iso":iso, "exposureNs":exposure, "focusAuto":true, "focus":0,
         "zoom":1.0, "ev":0, "awb":1, "ois":false, "stabilization":false, "torch":false,
         "aeLock":false, "awbLock":false, "gains":[1.0,1.0,1.0,1.0],
         "stretchX":1.0,"stretchY":1.0,"distortion":0.0,"bulge":0.0,"bulgeRadius":0.4,"bulgeX":0.5,"bulgeY":0.5,
         "backgroundBlur":0.0,"maskFps":10,"mlDelegate":"auto","outputMode":0,
         "processingLocation":"phone","desktopBackend":"auto","desktopAdapter":"auto","desktopMl":"auto",
-        "noiseReduction":-1,"edgeMode":-1,"aberrationMode":-1,"lensCorrection":-1}),
-    )
+        "noiseReduction":-1,"edgeMode":-1,"aberrationMode":-1,"lensCorrection":-1});
+    if let (Some(map), Value::Object(look)) = (
+        settings.as_object_mut(),
+        serde_json::json!({"hue":0.0,"saturation":1.0,"contrast":1.0,"sharpen":0.0,"autoRotate":true}),
+    ) {
+        map.extend(look);
+    }
+    Ok(settings)
 }
 
 #[cfg(test)]
