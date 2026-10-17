@@ -91,7 +91,7 @@ final class CameraControls {
                 }
                 if (camera == null) return;
                 camera=WirePixels.camera(camera,settings.optString("codec"));
-                switch (tool) { case 0 -> lenses(); case 1 -> format(); case 2 -> sensor(); case 3 -> effects(); }
+                switch (tool) { case 0 -> lenses(); case 1 -> format(); case 2 -> sensor(); case 3 -> effects(); case 5 -> quick(); }
             } catch (Exception e) { error.accept(e.getMessage()); }
         }
         binding = true;
@@ -109,9 +109,9 @@ final class CameraControls {
             JSONObject values = Json.object(key, checked);
             if (checked && key.equals("ois")) values = Json.object("ois", true, "stabilization", false);
             if (checked && key.equals("stabilization")) values = Json.object("stabilization", true, "ois", false);
-            patch(values, key.equals("phoneMirror"));
+            patch(values, key.equals("phoneMirror") || key.equals("autoRotate"));
         });
-        bindings.add(s -> view.setChecked(s.optBoolean(key, key.equals("focusAuto")))); spacing(view);
+        bindings.add(s -> view.setChecked(s.optBoolean(key, key.equals("focusAuto") || key.equals("autoRotate")))); spacing(view);
     }
     void number(String label, String key, double low, double high, boolean integer, boolean configure) {
         editor(label, List.of(), s -> s.has(key) ? s.opt(key).toString() : key.equals("outputWidth") ? Integer.toString(PhoneProcessor.outputWidth(s)) : Integer.toString(PhoneProcessor.outputHeight(s)), text -> {
@@ -252,6 +252,7 @@ final class CameraControls {
         section(R.string.output_group);
         menu(text(R.string.aspect_mapping), List.of(text(R.string.fit),text(R.string.crop),text(R.string.stretch)), List.of(0, 1, 2), s -> s.optInt("outputMode"), value -> patch(Json.object("outputMode", value), true));
         toggle(text(R.string.mirror), "phoneMirror", true);
+        toggle(text(R.string.follow_orientation), "autoRotate", true);
         advanced(R.string.advanced_output, () -> {
             number(text(R.string.output_width), "outputWidth", 2, 8192, true, true);
             number(text(R.string.output_height), "outputHeight", 2, 8192, true, true);
@@ -294,6 +295,18 @@ final class CameraControls {
             mode(text(R.string.lens_correction), "lensCorrection", "lensCorrectionModes", quality, true);
         });
     }
+    void quick() throws Exception {
+        support(R.string.quick_help);
+        section(R.string.quick_group);
+        toggle(text(R.string.torch), "torch", camera.optBoolean("flash"));
+        toggle(text(R.string.autofocus), "focusAuto", camera.optBoolean("manualFocus"));
+        toggle(text(R.string.mirror), "phoneMirror", true);
+        toggle(text(R.string.follow_orientation), "autoRotate", true);
+        slider(text(R.string.background_blur), "backgroundBlur", 0, 64, 0, true);
+        slider(text(R.string.saturation), "saturation", 0, 2, 1, false);
+        slider(text(R.string.sharpen), "sharpen", 0, 2, 0, false);
+        slider(text(R.string.zoom), "zoom", (float) camera.getJSONArray("zoom").getDouble(0), (float) camera.getJSONArray("zoom").getDouble(1), 1, false);
+    }
     void effects() throws Exception {
         support(R.string.phone_effects_help);
         section(R.string.geometry_group);
@@ -306,8 +319,13 @@ final class CameraControls {
             slider(text(R.string.center_x), "bulgeX", 0, 1, .5f, false);
             slider(text(R.string.center_y), "bulgeY", 0, 1, .5f, false);
         });
+        section(R.string.look_group);
+        slider(text(R.string.hue), "hue", -180, 180, 0, true);
+        slider(text(R.string.saturation), "saturation", 0, 2, 1, false);
+        slider(text(R.string.contrast), "contrast", .5f, 1.5f, 1, false);
+        slider(text(R.string.sharpen), "sharpen", 0, 2, 0, false);
         section(R.string.background_group);
-        slider(text(R.string.background_blur), "backgroundBlur", 0, 32, 0, true);
+        slider(text(R.string.background_blur), "backgroundBlur", 0, 64, 0, true);
         advanced(R.string.advanced_blur, () -> {
             slider(text(R.string.mask_rate), "maskFps", 2, 30, 10, true);
             menu(text(R.string.ml_processor), List.of(text(R.string.auto),text(R.string.cpu),text(R.string.gpu)), List.of("auto", "cpu", "gpu"), s -> s.optString("mlDelegate", "auto"), value -> patch(Json.object("mlDelegate", value), false));

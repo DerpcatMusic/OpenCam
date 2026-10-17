@@ -24,6 +24,10 @@ pub const EFFECT_KEYS: &[&str] = &[
     "bulgeX",
     "bulgeY",
     "backgroundBlur",
+    "hue",
+    "saturation",
+    "contrast",
+    "sharpen",
     "maskFps",
     "mlDelegate",
     "outputWidth",
@@ -45,6 +49,8 @@ pub const STREAM_KEYS: &[&str] = &[
     "phoneRotation",
     "phoneMirror",
     "outputMode",
+    "autoRotation",
+    "sensorOrientation",
 ];
 
 pub const DESKTOP_KEYS: &[&str] = &[
@@ -66,6 +72,10 @@ pub struct Options {
     pub radius: f32,
     pub center: [f32; 2],
     pub blur: f32,
+    pub hue: f32,
+    pub saturation: f32,
+    pub contrast: f32,
+    pub sharpen: f32,
     pub mask_fps: f32,
     pub width: u32,
     pub height: u32,
@@ -139,7 +149,12 @@ impl Options {
             bulge: n("bulge", 0., -0.8, 0.8)?,
             radius: n("bulgeRadius", 0.4, 0.05, 1.)?,
             center: [n("bulgeX", 0.5, 0., 1.)?, n("bulgeY", 0.5, 0., 1.)?],
-            blur: n("backgroundBlur", 0., 0., 32.)?,
+            // The phone accepts up to 64; the desktop blur kernel is tuned for 32.
+            blur: n("backgroundBlur", 0., 0., 64.)?.min(32.),
+            hue: n("hue", 0., -180., 180.)?,
+            saturation: n("saturation", 1., 0., 2.)?,
+            contrast: n("contrast", 1., 0.5, 1.5)?,
+            sharpen: n("sharpen", 0., 0., 2.)?,
             mask_fps: n("maskFps", 10., 2., 30.)?,
             width: width as u32,
             height: height as u32,
@@ -182,6 +197,29 @@ impl Options {
             && self.distortion == 0.
             && self.bulge == 0.
             && self.blur == 0.
+            && self.hue == 0.
+            && self.saturation == 1.
+            && self.contrast == 1.
+            && self.sharpen == 0.
+    }
+    /// Luma-preserving hue/saturation in YIQ, then contrast about mid grey; mirrors the phone and WGSL shaders.
+    fn grade(&self, c: [f32; 4]) -> [f32; 4] {
+        let (r, g, b) = (c[0], c[1], c[2]);
+        let y = 0.299 * r + 0.587 * g + 0.114 * b;
+        let i = 0.596 * r - 0.274 * g - 0.322 * b;
+        let q = 0.211 * r - 0.523 * g + 0.312 * b;
+        let (sin, cos) = self.hue.to_radians().sin_cos();
+        let (i, q) = (
+            self.saturation * (i * cos - q * sin),
+            self.saturation * (i * sin + q * cos),
+        );
+        let rgb = [
+            y + 0.956 * i + 0.621 * q,
+            y - 0.272 * i - 0.647 * q,
+            y - 1.106 * i + 1.703 * q,
+        ];
+        let [r, g, b] = rgb.map(|v| ((v - 0.5) * self.contrast + 0.5).clamp(0., 1.));
+        [r, g, b, c[3]]
     }
 }
 
@@ -194,6 +232,11 @@ pub fn phone_settings(settings: &Value) -> Value {
             ("distortion", json!(0)),
             ("bulge", json!(0)),
             ("backgroundBlur", json!(0)),
+            ("hue", json!(0)),
+            ("saturation", json!(1)),
+            ("contrast", json!(1)),
+            ("sharpen", json!(0)),
+            ("autoRotate", json!(false)),
             ("outputWidth", json!(0)),
             ("outputHeight", json!(0)),
             ("phoneRotation", json!(0)),
@@ -347,13 +390,35 @@ fn cpu(frame: &Frame, o: &Options, mask: Option<&[f32]>) -> Frame {
                 dst[3] = 255;
                 if let Some(uv) = coordinate(o, frame.width, frame.height, x, y as u32) {
                     let mut c = sample(&frame.pixels, frame.width, frame.height, uv);
+                    if o.sharpen > 0. {
+                        let (tx, ty) = (1. / frame.width as f32, 1. / frame.height as f32);
+                        let near = [[tx, 0.], [-tx, 0.], [0., ty], [0., -ty]].map(|d| {
+                            sample(
+                                &frame.pixels,
+                                frame.width,
+                                frame.height,
+                                [uv[0] + d[0], uv[1] + d[1]],
+                            )
+                        });
+                        for i in 0..3 {
+                            let around = near.iter().map(|n| n[i]).sum::<f32>() * 0.25;
+                            c[i] += o.sharpen * (c[i] - around);
+                        }
+                    }
                     if let Some(blur) = &blur {
                         let blurred = sample(blur, frame.width, frame.height, uv);
-                        let person = mask.map(|m| ml::sample_mask(m, uv)).unwrap_or(0.);
+                        // Without a mask yet, leave the frame sharp rather than blurring the person.
+                        let person = mask.map(|m| ml::sample_mask(m, uv)).unwrap_or(1.);
                         for i in 0..3 {
                             c[i] = blurred[i] * (1. - person) + c[i] * person;
                         }
                     }
+                    let c = o.grade([
+                        c[0].clamp(0., 1.),
+                        c[1].clamp(0., 1.),
+                        c[2].clamp(0., 1.),
+                        1.,
+                    ]);
                     for i in 0..3 {
                         dst[i] = (c[i] * 255.).round().clamp(0., 255.) as u8;
                     }
@@ -388,6 +453,7 @@ impl Worker {
             let mut gpu_ms = None;
             let mut error = String::new();
             let mut segmenter = None;
+            let mut smooth: Option<(Vec<f32>, Instant)> = None;
             let mut last_mask = Instant::now() - Duration::from_secs(1);
             let mut report_time = Instant::now();
             let mut adapters = None;
@@ -424,7 +490,26 @@ impl Worker {
                 } else {
                     segmenter = None;
                 }
-                let mask = segmenter.as_ref().and_then(|s| s.mask());
+                // Ease toward each new matte and hold the last one for a few seconds, so model hiccups never flash the background sharp or blur the person.
+                if o.blur > 0. {
+                    if let Some(latest) = segmenter.as_ref().and_then(|s| s.mask()) {
+                        match &mut smooth {
+                            Some((held, at)) if held.len() == latest.len() => {
+                                for (a, b) in held.iter_mut().zip(&latest) {
+                                    *a += (*b - *a) * 0.35;
+                                }
+                                *at = Instant::now();
+                            }
+                            _ => smooth = Some((latest, Instant::now())),
+                        }
+                    }
+                } else {
+                    smooth = None;
+                }
+                let mask = smooth
+                    .as_ref()
+                    .filter(|(_, at)| at.elapsed() < Duration::from_secs(3))
+                    .map(|(held, _)| held.clone());
                 let output = if o.identity(frame.width, frame.height) {
                     frame.clone()
                 } else {
@@ -616,10 +701,21 @@ mod tests {
             json!({"outputWidth":721,"outputHeight":720}),
             json!({"phoneRotation":45}),
             json!({"desktopBackend":"cuda"}),
-            json!({"backgroundBlur":33}),
+            json!({"backgroundBlur":65}),
+            json!({"saturation":3}),
+            json!({"hue":200}),
         ] {
             assert!(Options::read(&bad).is_err());
         }
+        // The phone blurs up to 64; the desktop clamps to its kernel limit instead of rejecting shared settings.
+        assert_eq!(
+            Options::read(&json!({"backgroundBlur":50})).unwrap().blur,
+            32.
+        );
+        let graded = Options::read(&json!({"saturation":0}))
+            .unwrap()
+            .grade([0.9, 0.2, 0.1, 1.]);
+        assert!((graded[0] - graded[1]).abs() < 1e-3 && (graded[1] - graded[2]).abs() < 1e-3);
         let settings = json!({"processingLocation":"desktop","desktopBackend":"gpu","stretchX":2.,"backgroundBlur":12,"outputWidth":720,"outputHeight":720,"zoom":2.,"torch":true});
         let phone = phone_settings(&settings);
         assert_eq!(phone["stretchX"], 1);

@@ -45,7 +45,8 @@ final class CaptureSettings {
                 "exposureNs", exposure == null ? 8_333_333 : Math.min(exposure.getLong(1), Math.max(exposure.getLong(0), 8_333_333)),
                 "focusAuto", true, "focus", 0, "zoom", 1.0, "ev", 0, "awb", 1,
                 "ois", false, "stabilization", false, "torch", false, "aeLock", false, "awbLock", false,
-                "gains", new JSONArray(new double[]{1, 1, 1, 1}));
+                "gains", new JSONArray(new double[]{1, 1, 1, 1}), "autoRotate", true,
+                "hue", 0, "saturation", 1, "contrast", 1, "sharpen", 0);
     }
 
     static boolean stale(JSONObject command, long revision) {

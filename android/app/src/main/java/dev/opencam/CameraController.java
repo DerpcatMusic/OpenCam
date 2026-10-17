@@ -158,7 +158,8 @@ final class CameraController implements AutoCloseable {
                 "focusAuto", "focus", "zoom", "ev", "awb", "ois", "stabilization", "torch", "aeLock", "awbLock", "gains",
                 "outputWidth", "outputHeight", "outputMode", "phoneRotation", "phoneMirror", "stretchX", "stretchY",
                 "distortion", "bulge", "bulgeRadius", "bulgeX", "bulgeY", "backgroundBlur", "maskFps", "mlDelegate",
-                "noiseReduction", "edgeMode", "aberrationMode", "lensCorrection", "rawWidth", "rawHeight");
+                "noiseReduction", "edgeMode", "aberrationMode", "lensCorrection", "rawWidth", "rawHeight",
+                "hue", "saturation", "contrast", "sharpen", "autoRotate", "autoRotation", "sensorOrientation");
         for (Iterator<String> keys = s.keys(); keys.hasNext();) {
             if (!allowed.contains(keys.next())) throw new IllegalArgumentException("Unknown camera control");
         }
@@ -247,7 +248,33 @@ final class CameraController implements AutoCloseable {
 
     void configure(JSONObject settings) throws Exception { configure(settings, streaming); }
 
+    /** Clockwise rotation of the raw sensor frame that makes the stream upright for the current display orientation. */
+    int autoRotation(JSONObject s) throws JSONException {
+        android.view.Display display = context.getDisplay();
+        Catalog.Lens l = catalog.lenses.get(s.optString("camera"));
+        if (!s.optBoolean("autoRotate", true) || display == null || l == null || highSpeed(s, l)
+                || s.optString("codec").equals(WirePixels.YUV)) return 0;
+        int sensor = sensorOrientation(l), degrees = display.getRotation() * 90;
+        boolean front = Objects.equals(l.chars().get(CameraCharacteristics.LENS_FACING), CameraMetadata.LENS_FACING_FRONT);
+        return ((front ? sensor + degrees : sensor - degrees) % 360 + 360) % 360;
+    }
+
+    static int sensorOrientation(Catalog.Lens l) {
+        Integer value = l.chars().get(CameraCharacteristics.SENSOR_ORIENTATION);
+        return value == null ? 0 : value;
+    }
+
+    void displayChanged() {
+        handler.post(() -> {
+            try { if (current != null && session != null && autoRotation(current) != current.optInt("autoRotation")) configure(current, streaming); }
+            catch (Exception e) { fail(e); }
+        });
+    }
+
     void configure(JSONObject settings, boolean encode) throws Exception {
+        settings = CaptureSettings.copy(settings);
+        settings.put("autoRotation", autoRotation(settings));
+        if (catalog.lenses.containsKey(settings.optString("camera"))) settings.put("sensorOrientation", sensorOrientation(catalog.lenses.get(settings.optString("camera"))));
         Catalog.Lens selected = catalog.lenses.get(settings.getString("camera"));
         boolean pixels=encode && WirePixels.uncompressed(settings.optString("codec")), rgba=pixels && settings.optString("codec").equals(WirePixels.RGBA);
         boolean compressed=encode && !pixels;
@@ -358,10 +385,11 @@ final class CameraController implements AutoCloseable {
     void controls(JSONObject settings) throws Exception {
         if (current == null) throw new IllegalStateException("Start a stream before adjusting controls");
         JSONObject merged = new JSONObject(current.toString());
-        Set<String> streamKeys = Set.of("camera", "codec", "width", "height", "fps", "bitrate", "outputWidth", "outputHeight", "phoneRotation", "phoneMirror", "outputMode");
+        Set<String> streamKeys = Set.of("camera", "codec", "width", "height", "fps", "bitrate", "outputWidth", "outputHeight", "phoneRotation", "phoneMirror", "outputMode", "autoRotate");
         boolean restart = false;
         for (Iterator<String> keys = settings.keys(); keys.hasNext();) {
             String key = keys.next();
+            if (key.equals("autoRotation") || key.equals("sensorOrientation")) continue;
             Object value = settings.get(key);
             // An unchanged stream value is harmless; a changed one restarts the stream instead of failing the update.
             if (streamKeys.contains(key) && !same(current.opt(key), value)) restart = true;
