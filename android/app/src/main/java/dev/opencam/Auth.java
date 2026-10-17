@@ -3,7 +3,10 @@ package dev.opencam;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.security.GeneralSecurityException;
+import javax.crypto.Cipher;
 import javax.crypto.Mac;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -32,5 +35,23 @@ final class Auth {
     }
     static boolean verify(byte[] key, byte[] challenge, byte[] pin, String supplied) throws Exception {
         return MessageDigest.isEqual(proof(key,challenge,pin), unhex(supplied,32));
+    }
+
+    static boolean tailscale(String host) {
+        String[] part = host.split("\\.");
+        if (part.length != 4 || !part[0].equals("100")) return false;
+        try { int second = Integer.parseInt(part[1]); return second >= 64 && second <= 127; }
+        catch (NumberFormatException e) { return false; }
+    }
+
+    static byte[] seal(byte[] secret, byte[] plain) throws GeneralSecurityException {
+        MessageDigest sha = MessageDigest.getInstance("SHA-256");
+        sha.update("opencam-pair-v1".getBytes(StandardCharsets.US_ASCII)); sha.update(secret);
+        byte[] iv = Auth.random(12);
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(sha.digest(), "AES"), new GCMParameterSpec(128, iv));
+        byte[] sealed = cipher.doFinal(plain), out = new byte[12 + sealed.length];
+        System.arraycopy(iv, 0, out, 0, 12); System.arraycopy(sealed, 0, out, 12, sealed.length);
+        return out;
     }
 }

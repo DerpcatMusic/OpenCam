@@ -1,6 +1,6 @@
 [package]
 name = "opencam"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 rust-version = "1.98"
 license = "MIT"
@@ -20,6 +20,8 @@ rustls = { version = "0.23", default-features = false, features = ["std", "ring"
 sha2 = "0.10"
 ring = "0.17"
 mdns-sd = "=0.21.4"
+if-addrs = "0.15"
+qrcode = { version = "0.14", default-features = false }
 ffmpeg-next = { version = "=9.0.0", default-features = false, features = ["codec", "format", "software-scaling"] }
 wgpu = { version = "=29.0.4", default-features = false, features = ["std", "vulkan", "dx12", "metal", "wgsl"] }
 pollster = "0.4"

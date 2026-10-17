@@ -745,7 +745,11 @@ fn run(
                 continue;
             }
             if matches!(command["type"].as_str(), Some("configure" | "controls")) {
-                command["settings"] = crate::processing::phone_settings(&command["settings"]);
+                command["settings"] = if command["type"] == "controls" {
+                    crate::processing::phone_controls(&command["settings"])
+                } else {
+                    crate::processing::phone_settings(&command["settings"])
+                };
             }
             protocol::write_json(&mut stream, &command)?;
         }

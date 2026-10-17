@@ -32,6 +32,21 @@ pub const EFFECT_KEYS: &[&str] = &[
     "phoneMirror",
     "outputMode",
 ];
+/// Settings that need a camera restart; the phone rejects them inside a live `controls` update.
+pub const STREAM_KEYS: &[&str] = &[
+    "camera",
+    "codec",
+    "width",
+    "height",
+    "fps",
+    "bitrate",
+    "outputWidth",
+    "outputHeight",
+    "phoneRotation",
+    "phoneMirror",
+    "outputMode",
+];
+
 pub const DESKTOP_KEYS: &[&str] = &[
     "processingLocation",
     "desktopBackend",
@@ -190,6 +205,17 @@ pub fn phone_settings(settings: &Value) -> Value {
     }
     if let Some(map) = v.as_object_mut() {
         for key in DESKTOP_KEYS {
+            map.remove(*key);
+        }
+    }
+    v
+}
+
+/// Live control updates never carry stream keys, even the overrides `phone_settings` adds for desktop processing.
+pub fn phone_controls(settings: &Value) -> Value {
+    let mut v = phone_settings(settings);
+    if let Some(map) = v.as_object_mut() {
+        for key in STREAM_KEYS {
             map.remove(*key);
         }
     }
@@ -627,5 +653,20 @@ mod tests {
         );
         assert_eq!(&out.pixels[..4], &[0, 0, 0, 255]);
         assert!(out.pixels.chunks_exact(4).all(|p| p[3] == 255));
+    }
+
+    #[test]
+    fn live_controls_carry_no_stream_keys_even_with_desktop_processing() {
+        let controls = phone_controls(
+            &json!({"processingLocation":"desktop","iso":400,"fps":60,"outputMode":1}),
+        );
+        assert_eq!(controls["iso"], 400);
+        for key in STREAM_KEYS {
+            assert!(controls.get(*key).is_none(), "{key}");
+        }
+        assert_eq!(
+            phone_settings(&json!({"processingLocation":"desktop"}))["outputMode"],
+            0
+        );
     }
 }
