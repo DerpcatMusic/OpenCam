@@ -1193,6 +1193,25 @@ impl Studio {
                         ))
                     }),
             )
+            .when_some(self.pair_request.as_ref(), |d, request| d.child(
+                div().mx_3().mt_3().flex().flex_col().gap_2()
+                    .child(div().font_weight(gpui::FontWeight::MEDIUM).child(format!("{} wants to pair", request.name)))
+                    .child(div().flex().gap_2()
+                        .child(button("accept-pair", "Accept", true, !self.connecting)
+                            .on_click(cx.listener(|this, _, window, cx| { this.accept_pair(window, cx); cx.notify(); })))
+                        .child(button("decline-pair", "Decline", false, true)
+                            .on_click(cx.listener(|this, _, _, cx| { this.pair_request = None; cx.notify(); })))),
+            ))
+            .child(
+                button("pair-qr", if self.offer.is_some() { "Hide pairing code" } else { "Pair with QR code" }, self.offer.is_some(), !self.connecting)
+                    .mx_3().mt_3()
+                    .on_click(cx.listener(|this, _, window, cx| { this.toggle_offer(window, cx); cx.notify(); })),
+            )
+            .when_some(self.offer_image.clone(), |d, image| d.child(
+                div().mx_3().mt_2().flex().flex_col().gap_2()
+                    .child(img(image).w(px(200.)).h(px(200.)).rounded(px(6.)))
+                    .child(muted("In OpenCam on your phone: Connection → Scan code from computer. Works over Tailscale on mobile data.")),
+            ))
             .child(div().mx_3().mt_3().child(muted("Pairing link")))
             .child(
                 self.edit_field(

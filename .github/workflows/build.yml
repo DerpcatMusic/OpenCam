@@ -140,9 +140,10 @@ jobs:
         env:
           VARIANT: ${{ steps.signing.outputs.variant }}
         run: |
-          javac -d "$RUNNER_TEMP/opencam-tests" android/app/src/main/java/dev/opencam/{Limits,Auth}.java android/tests/{LimitsTest,AuthTest}.java
+          javac -d "$RUNNER_TEMP/opencam-tests" android/app/src/main/java/dev/opencam/{Limits,Auth}.java android/tests/{LimitsTest,AuthTest,PairTest}.java
           java -ea -cp "$RUNNER_TEMP/opencam-tests" dev.opencam.LimitsTest
           java -ea -cp "$RUNNER_TEMP/opencam-tests" dev.opencam.AuthTest
+          java -ea -cp "$RUNNER_TEMP/opencam-tests" dev.opencam.PairTest
           ./android/gradlew -p android "assemble${VARIANT^}" :app:assembleDebug :app:assembleDebugAndroidTest --console=plain
           mkdir -p dist
           cp "android/app/build/outputs/apk/$VARIANT/app-$VARIANT.apk" "dist/opencam-android-$VARIANT.apk"

@@ -9,6 +9,7 @@ mod monitor;
 mod output;
 mod processing;
 mod protocol;
+mod qrpair;
 mod session;
 mod ui;
 mod webcam;
@@ -105,6 +106,9 @@ struct Studio {
     pairing_input: gpui::Entity<gpui_base::input::InputState>,
     password_input: gpui::Entity<gpui_base::input::InputState>,
     discovery: Option<discovery::Discovery>,
+    offer: Option<qrpair::Offer>,
+    offer_image: Option<Arc<RenderImage>>,
+    pair_request: Option<qrpair::PairRequest>,
 }
 
 impl Studio {
@@ -265,11 +269,42 @@ impl Studio {
             pairing_input,
             password_input,
             discovery: discovery.ok(),
+            offer: None,
+            offer_image: None,
+            pair_request: None,
         };
         if !studio.pairing.is_empty() {
             studio.connect(false);
         }
         studio
+    }
+    fn stop_offer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.offer = None;
+        if let Some(old) = self.offer_image.take() {
+            cx.drop_image(old, Some(window));
+        }
+    }
+    fn toggle_offer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.offer.is_some() {
+            return self.stop_offer(window, cx);
+        }
+        match qrpair::Offer::start().and_then(|o| Ok((o.image()?, o))) {
+            Ok((image, offer)) => {
+                self.offer_image = Some(Arc::new(RenderImage::new(vec![image::Frame::new(image)])));
+                self.offer = Some(offer);
+                self.message("Scan the code with OpenCam on your phone", false);
+            }
+            Err(e) => self.message(format!("QR pairing unavailable: {e:#}"), true),
+        }
+    }
+    fn accept_pair(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(request) = self.pair_request.take() else {
+            return;
+        };
+        self.pairing = request.link.clone();
+        self.pairing_input
+            .update(cx, |state, cx| state.set_value(request.link, window, cx));
+        self.connect(false);
     }
     fn message(&mut self, text: impl Into<String>, error: bool) {
         self.status = text.into();
@@ -619,6 +654,11 @@ impl Studio {
                 self.pairing_input
                     .update(cx, |state, cx| state.set_value(link, window, cx));
             }
+        }
+        if let Some(request) = self.offer.as_ref().and_then(|o| o.requests.try_recv().ok()) {
+            self.stop_offer(window, cx);
+            self.pair_request = Some(request);
+            changed = true;
         }
         while let Ok(event) = self.utility_rx.try_recv() {
             changed = true;

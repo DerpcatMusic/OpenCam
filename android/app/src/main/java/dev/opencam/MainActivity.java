@@ -30,14 +30,14 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
     BottomSheetDialog sheet;
     Button discardPassword;
     int restoredTool = -1, restoredScroll;
-    String cameraFailure, connectionFailure;
+    String cameraFailure, connectionFailure, pendingScan;
     PasswordDraft passwordDraft;
     public static final class PasswordDraft extends androidx.lifecycle.ViewModel {
         String value = "";
         boolean edited;
         @Override protected void onCleared() { value = ""; edited = false; }
     }
-    Button status, copy, format, cameraAccess, savePassword, retryConnection;
+    Button status, copy, scan, format, cameraAccess, savePassword, retryConnection;
     MaterialSwitch protect, available;
     TextInputLayout passwordField;
     EditText password;
@@ -141,6 +141,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         password = sheetRoot.findViewById(R.id.password);
         passwordField = sheetRoot.findViewById(R.id.password_field);
         copy = sheetRoot.findViewById(R.id.copy);
+        scan = sheetRoot.findViewById(R.id.scan);
         pairingHelp = sheetRoot.findViewById(R.id.pairing_help);
         retryConnection = sheetRoot.findViewById(R.id.retry_connection);
         retryConnection.setOnClickListener(v -> { enable(); refreshStatus(); });
@@ -202,6 +203,12 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
                 });
             }
         });
+        scan.setOnClickListener(v -> {
+            if (!available.isChecked()) available.setChecked(true);
+            com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(this, new com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE).build())
+                .startScan().addOnSuccessListener(code -> pairWithDesktop(code.getRawValue()));
+        });
         copy.setOnClickListener(v -> {
             if (bridge == null) return;
             refreshPairingAddress();
@@ -217,26 +224,52 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
         if (!passwordDraft.value.isEmpty()) password.setText(passwordDraft.value);
     }
 
-    String address() throws SocketException {
+    String address(boolean preferTailscale) throws SocketException {
+        String lan = "127.0.0.1", tailscale = null;
         android.net.ConnectivityManager network = getSystemService(android.net.ConnectivityManager.class);
         android.net.Network active = network == null ? null : network.getActiveNetwork();
         android.net.LinkProperties properties = active == null ? null : network.getLinkProperties(active);
         if (properties != null) for (android.net.LinkAddress link : properties.getLinkAddresses()) {
             InetAddress ip = link.getAddress();
-            if (ip instanceof Inet4Address && ip.isSiteLocalAddress()) return ip.getHostAddress();
+            if (ip instanceof Inet4Address && ip.isSiteLocalAddress()) { lan = ip.getHostAddress(); break; }
         }
         for (NetworkInterface iface : Collections.list(NetworkInterface.getNetworkInterfaces())) {
             if (!iface.isUp() || iface.isLoopback()) continue;
-            for (InetAddress ip : Collections.list(iface.getInetAddresses()))
-                if (ip instanceof Inet4Address && ip.isSiteLocalAddress()) return ip.getHostAddress();
+            for (InetAddress ip : Collections.list(iface.getInetAddresses())) {
+                if (!(ip instanceof Inet4Address)) continue;
+                if (Auth.tailscale(ip.getHostAddress())) tailscale = ip.getHostAddress();
+                else if (lan.equals("127.0.0.1") && ip.isSiteLocalAddress()) lan = ip.getHostAddress();
+            }
         }
-        return "127.0.0.1";
+        // Tailscale carries the link over mobile data; use it when asked, or when no local network exists.
+        return tailscale != null && (preferTailscale || lan.equals("127.0.0.1")) ? tailscale : lan;
     }
 
-    void refreshPairingAddress() {
+    void pairWithDesktop(String text) {
+        if (!resumed) { pendingScan = text; return; }
+        PairClient.Target target;
+        try { target = PairClient.parse(text); }
+        catch (RuntimeException e) { toast(getString(R.string.scan_failed, e.getMessage())); return; }
+        enable();
+        if (bridge == null) { toast(getString(R.string.scan_failed, connectionFailure == null ? getString(R.string.preview_only) : connectionFailure)); return; }
+        refreshPairingAddress(target.tailscale());
+        String link = pairing;
+        new Thread(() -> {
+            try { String host = PairClient.send(target, android.os.Build.MODEL, link); runOnUiThread(() -> toast(getString(R.string.scan_sent, host))); }
+            catch (Exception e) { runOnUiThread(() -> toast(getString(R.string.scan_failed, e.getMessage()))); }
+        }, "opencam-pair").start();
+    }
+
+    void toast(String message) {
+        com.google.android.material.snackbar.Snackbar.make(sheet.isShowing()?sheetRoot:findViewById(R.id.content),message,com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show();
+    }
+
+    void refreshPairingAddress() { refreshPairingAddress(false); }
+
+    void refreshPairingAddress(boolean preferTailscale) {
         if (bridge == null) return;
         String host;
-        try { host = address(); } catch (SocketException e) { host = "127.0.0.1"; }
+        try { host = address(preferTailscale); } catch (SocketException e) { host = "127.0.0.1"; }
         String endpoint = host + ":" + Bridge.PORT;
         pairing = "opencam://" + endpoint + "?token=" + bridge.token + "&pin=" + bridge.fingerprint;
         connectionDetail.setText(getString(R.string.connection_endpoint,endpoint) + "\n" +
@@ -337,6 +370,7 @@ public final class MainActivity extends AppCompatActivity implements Bridge.List
             requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
         }
         refreshStatus();
+        if (pendingScan != null) { String code = pendingScan; pendingScan = null; pairWithDesktop(code); }
         if (restoredTool >= 0) {
             int tool = restoredTool; restoredTool = -1; select(tool);
             panel.post(() -> panel.scrollTo(0, restoredScroll));

@@ -39,6 +39,9 @@
      android:text="@string/pairing_help" android:textAppearance="@style/TextAppearance.OpenCam.Supporting" />
     <TextView android:id="@+id/connection_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_control"
      android:textAppearance="@style/TextAppearance.OpenCam.Supporting" android:textIsSelectable="true" android:accessibilityLiveRegion="polite" />
+    <com.google.android.material.button.MaterialButton android:id="@+id/scan" style="@style/Widget.OpenCam.Action"
+     android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_control"
+     android:text="@string/scan_desktop_code" />
     <com.google.android.material.button.MaterialButton android:id="@+id/copy" style="@style/Widget.OpenCam.Action"
      android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="@dimen/space_control"
      android:text="@string/copy_pairing_link" android:enabled="false" app:icon="@drawable/ic_clipboard" />
