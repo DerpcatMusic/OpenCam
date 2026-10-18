@@ -10,6 +10,33 @@ pub fn clipboard_pairing(text: &str) -> Result<String> {
     Ok(text.to_owned())
 }
 
+fn last_phone_path() -> Option<std::path::PathBuf> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .or_else(|| std::env::var_os("APPDATA"))
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| std::path::Path::new(&home).join(".config"))
+        })?;
+    Some(base.join("opencam").join("last-phone"))
+}
+
+/// Name of the phone connected last time, so it can be reconnected automatically when it shows up again.
+pub fn last_phone() -> Option<String> {
+    let name = std::fs::read_to_string(last_phone_path()?).ok()?;
+    let name = name.trim();
+    (!name.is_empty() && name.len() <= 80 && !name.chars().any(char::is_control))
+        .then(|| name.to_owned())
+}
+
+pub fn remember_phone(name: &str) {
+    if let Some(path) = last_phone_path() {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(path, name);
+    }
+}
+
 pub fn recovery_hint(error: &str) -> &'static str {
     let error = error.to_ascii_lowercase();
     if error.contains("password") || error.contains("authentication") {
