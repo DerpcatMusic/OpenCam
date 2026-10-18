@@ -325,9 +325,21 @@ final class CameraController implements AutoCloseable {
         format.setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, fps);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
         if (Build.VERSION.SDK_INT >= 29) format.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0);
-        // ponytail: codec-specific encoder latency knobs need per-device benchmarks; zero B-frames is the portable baseline.
         if (mime.equals("video/avc")) format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
-        encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+        // Real-time hints: low-latency mode, top scheduling priority, an operating rate at the capture rate and constant bitrate
+        // (steady frame sizes keep the TCP queue short). Encoders that reject any hint fall back to the plain format.
+        MediaFormat tuned = new MediaFormat(format);
+        tuned.setInteger(MediaFormat.KEY_LOW_LATENCY, 1);
+        tuned.setInteger(MediaFormat.KEY_PRIORITY, 0);
+        tuned.setInteger(MediaFormat.KEY_OPERATING_RATE, fps);
+        var rates = encoder.getCodecInfo().getCapabilitiesForType(mime).getEncoderCapabilities();
+        if (rates != null && rates.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR))
+            tuned.setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR);
+        try { encoder.configure(tuned, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE); }
+        catch (RuntimeException rejected) {
+            encoder.release(); encoder = MediaCodec.createByCodecName(current.getString("codec"));
+            encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+        }
         surface = encoder.createInputSurface();
         encoder.start();
         }

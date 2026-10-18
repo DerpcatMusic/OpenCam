@@ -106,6 +106,8 @@ struct Studio {
     pairing_input: gpui::Entity<gpui_base::input::InputState>,
     password_input: gpui::Entity<gpui_base::input::InputState>,
     discovery: Option<discovery::Discovery>,
+    last_phone: Option<String>,
+    auto_link: Option<String>,
     offer: Option<qrpair::Offer>,
     offer_image: Option<Arc<RenderImage>>,
     pair_request: Option<qrpair::PairRequest>,
@@ -269,6 +271,8 @@ impl Studio {
             pairing_input,
             password_input,
             discovery: discovery.ok(),
+            last_phone: connection::last_phone(),
+            auto_link: None,
             offer: None,
             offer_image: None,
             pair_request: None,
@@ -348,6 +352,14 @@ impl Studio {
                 return;
             }
         };
+        if let Some(phone) = self
+            .discovery
+            .as_ref()
+            .and_then(|d| d.phones.values().find(|p| p.link == self.pairing))
+        {
+            connection::remember_phone(&phone.name);
+            self.last_phone = Some(phone.name.clone());
+        }
         self.disconnect();
         self.connecting = true;
         self.message(
@@ -631,6 +643,32 @@ impl Studio {
     }
     fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let mut changed = self.discovery.as_mut().is_some_and(|d| d.poll());
+        // Reconnect to the phone used last time as soon as it advertises again, once per advertisement,
+        // so a manual disconnect is respected. Protected phones wait for the saved password.
+        if changed && self.session.is_none() && !self.connecting {
+            let known = self.last_phone.as_ref().and_then(|name| {
+                self.discovery
+                    .as_ref()?
+                    .phones
+                    .values()
+                    .find(|p| &p.name == name)
+                    .cloned()
+            });
+            if let Some(phone) = known {
+                if self.auto_link.as_ref() != Some(&phone.link)
+                    && (!phone.protected || !self.shared.password.lock().unwrap().is_empty())
+                {
+                    self.auto_link = Some(phone.link.clone());
+                    self.pairing = phone.link.clone();
+                    let link = phone.link;
+                    self.pairing_input
+                        .update(cx, |state, cx| state.set_value(link, window, cx));
+                    self.message("Reconnecting to your phone…", false);
+                    self.connect(false);
+                    changed = true;
+                }
+            }
+        }
         if changed && self.pairing.is_empty() {
             if let Some(phone) = self
                 .discovery
