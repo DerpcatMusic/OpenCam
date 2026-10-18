@@ -14,28 +14,35 @@ mod linux {
     };
 
     pub fn device(requested: &str) -> Result<String> {
-        let valid = |name: &str| {
-            let p = std::path::Path::new("/sys/class/video4linux").join(name);
-            let virtual_node =
-                std::fs::canonicalize(&p).is_ok_and(|p| p.starts_with("/sys/devices/virtual"));
-            let label = std::fs::read_to_string(p.join("name"))
-                .unwrap_or_default()
-                .to_lowercase();
-            virtual_node
-                && (label.contains("loopback")
-                    || label.contains("opencam")
-                    || label.contains("dummy video"))
+        // Any virtual video node is a loopback sink (v4l2loopback keeps whatever card_label it was loaded with,
+        // e.g. "Iriun Webcam"), so the label only decides which one is tried first.
+        let virtual_node = |name: &str| {
+            std::fs::canonicalize(std::path::Path::new("/sys/class/video4linux").join(name))
+                .is_ok_and(|p| p.starts_with("/sys/devices/virtual"))
         };
+        let label = |name: &str| {
+            std::fs::read_to_string(format!("/sys/class/video4linux/{name}/name"))
+                .unwrap_or_default()
+                .to_lowercase()
+        };
+        let valid = virtual_node;
         if requested == "auto" {
-            for entry in std::fs::read_dir("/sys/class/video4linux")
+            let mut nodes: Vec<String> = std::fs::read_dir("/sys/class/video4linux")
                 .into_iter()
                 .flatten()
                 .flatten()
-            {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if valid(&name) {
-                    return Ok(format!("/dev/{name}"));
-                }
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| valid(n))
+                .collect();
+            nodes.sort_by_key(|n| {
+                let l = label(n);
+                (
+                    !(l.contains("opencam") || l.contains("loopback")),
+                    n.clone(),
+                )
+            });
+            if let Some(name) = nodes.first() {
+                return Ok(format!("/dev/{name}"));
             }
             anyhow::bail!(
                 "Virtual-camera driver missing. Install v4l2loopback, then load it with card_label=OpenCam exclusive_caps=1."
