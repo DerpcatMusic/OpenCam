@@ -7,7 +7,7 @@ android {
         applicationId 'dev.opencam'
         minSdk 30
         targetSdk 36
-        versionCode 5
+        versionCode 6
         versionName '0.1.4'
         testInstrumentationRunner 'dev.opencam.ProcessingTest'
     }
