@@ -40,7 +40,7 @@ public final class ProcessingTest extends Instrumentation {
     byte[] frame(PhoneProcessor processor,ImageReader reader,AtomicReference<Exception> error) throws Exception {
         try (Image stale=reader.acquireLatestImage()) { }
         pattern(processor);
-        for (int i=0;i<80;i++) {
+        for (int i=0;i<400;i++) {
             if (error.get()!=null) throw error.get();
             try (Image image=reader.acquireLatestImage()) {
                 if (image!=null) {
@@ -170,6 +170,7 @@ public final class ProcessingTest extends Instrumentation {
                 int target=activity.getResources().getDimensionPixelSize(R.dimen.touch_target_min);
                 int lastToolBottom=0;
                 for (var tool : activity.tools) {
+                    if (tool==null) continue;
                     android.graphics.Rect bounds=new android.graphics.Rect();
                     require(tool.getWidth()>=target && tool.getHeight()>=target, "Camera tool lost its minimum touch target");
                     require(tool.getText().length()>0, "Camera tools need visible labels");

@@ -665,7 +665,8 @@ pub fn smoke() -> Result<Value> {
     let warp_ms = t.elapsed().as_secs_f64() * 1000.;
     let mut b = o.clone();
     b.blur = 12.;
-    let blurred = g.process(&frame, &b, None)?;
+    let nobody = vec![0f32; 256 * 144];
+    let blurred = g.process(&frame, &b, Some(&nobody))?;
     ensure!(blurred.pixels != actual.pixels, "GPU blur unchanged");
     ensure!(
         blurred.pixels.chunks_exact(4).all(|p| p[3] == 255),
